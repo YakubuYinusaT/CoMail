@@ -36,6 +36,14 @@ from app.web import router as web_router  # noqa: E402
 
 app.include_router(web_router)
 
+from pathlib import Path as _Path  # noqa: E402
+
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+app.mount("/static",
+          StaticFiles(directory=_Path(__file__).parent / "static"),
+          name="static")
+
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:

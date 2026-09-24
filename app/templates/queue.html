@@ -1,35 +1,65 @@
 {% extends "base.html" %}
-{% block title %}Review queue — Cohandle{% endblock %}
+{% block title %}Queue — Cohandle{% endblock %}
 {% block body %}
 <h1>Review queue</h1>
-<p class="sub">{{ drafts|length }} draft{{ '' if drafts|length == 1 else 's' }} waiting.
-Nothing sends without you approving it.</p>
+<p class="lede">
+  {% if pending %}<strong>{{ pending }}</strong> waiting on you{% else %}All reviewed{% endif %}
+  {% if drafts %} · {{ drafts|length }} draft{{ '' if drafts|length == 1 else 's' }} total{% endif %}
+  · nothing sends without your approval.
+  <span class="faint">Press <kbd>j</kbd> <kbd>k</kbd> to move, <kbd>enter</kbd> to open.</span>
+</p>
 
 {% if not drafts %}
   <div class="empty">
-    No drafts yet.<br><br>
-    <code>python -m app.cli generate {{ campaign or 'raise-2026' }}</code>
+    Nothing drafted yet.
+    <br><code>python -m app.cli generate {{ campaign or 'raise-2026' }}</code>
   </div>
 {% else %}
+<div class="scroller">
 <table>
-  <tr><th>Target</th><th>Fit</th><th>Address</th><th>Opening</th>
-      <th>Sameness</th><th>Channel</th><th>Status</th></tr>
+  <thead><tr>
+    <th>Target</th><th>Fit</th><th>Send to</th><th>Opened on</th>
+    <th>Sameness</th><th>Channel</th><th>State</th>
+  </tr></thead>
+  <tbody>
   {% for d in drafts %}
-  <tr>
-    <td><a href="/draft/{{ d.id }}"><strong>{{ d.name }}</strong></a>
-        <div class="muted">{{ d.domain }}</div></td>
-    <td><span class="score">{{ d.score if d.score is not none else '–' }}</span></td>
-    <td>{% if d.email %}{{ d.email }}
-          {% if not d.verified %}<div class="bad">unverified</div>{% endif %}
-        {% else %}<span class="muted">none</span>{% endif %}</td>
-    <td class="muted">{{ d.hook_type }}</td>
-    <td class="score {{ 'bad' if d.similarity_max and d.similarity_max > threshold }}">
-        {{ '%.2f'|format(d.similarity_max) if d.similarity_max else '–' }}</td>
-    <td>{% if d.email_ok %}<span class="pill email">email</span>
-        {% else %}<span class="pill hold">check</span>{% endif %}</td>
-    <td><span class="pill {{ d.status }}">{{ d.status }}</span></td>
+  <tr data-href="/draft/{{ d.id }}" tabindex="0">
+    <td>
+      <div class="cell-title">{{ d.name }}</div>
+      <div class="cell-sub mono">{{ d.domain }}</div>
+    </td>
+    <td>
+      {% if d.score is not none %}
+        <span class="score mono">{{ d.score }}</span>
+        <span class="meter"><i style="width: {{ d.score }}%"></i></span>
+      {% else %}<span class="faint">—</span>{% endif %}
+    </td>
+    <td>
+      {% if d.email %}
+        <div class="mono" style="font-size:var(--t-sm)">{{ d.email }}</div>
+        {% if not d.verified %}<div class="cell-sub" style="color:var(--bad)">unverified</div>{% endif %}
+      {% else %}<span class="faint">none</span>{% endif %}
+    </td>
+    <td><span class="mute">{{ d.hook_type.replace('_', ' ') }}</span></td>
+    <td>
+      {% if d.similarity_max %}
+        <span class="mono {{ 'tag bad plain' if d.similarity_max > threshold }}">{{ '%.2f'|format(d.similarity_max) }}</span>
+      {% else %}<span class="faint">—</span>{% endif %}
+    </td>
+    <td>
+      {% if d.email_ok %}<span class="tag good">email</span>
+      {% else %}<span class="tag warn">check first</span>{% endif %}
+    </td>
+    <td>
+      {% if d.status == 'approved' %}<span class="tag good">approved</span>
+      {% elif d.status == 'rejected' %}<span class="tag bad">rejected</span>
+      {% elif d.status == 'edited' %}<span class="tag plain">edited</span>
+      {% else %}<span class="tag plain">new</span>{% endif %}
+    </td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
+</div>
 {% endif %}
 {% endblock %}

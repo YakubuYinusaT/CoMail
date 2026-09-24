@@ -1,89 +1,123 @@
 {% extends "base.html" %}
 {% block title %}{{ t.name or t.domain }} — Cohandle{% endblock %}
 {% block body %}
+<p class="eyebrow"><a href="/" id="backlink" style="color:inherit;text-decoration:none">&larr; Queue</a>
+   <span class="faint">&nbsp;<kbd>u</kbd></span></p>
 <h1>{{ t.name or t.domain }}</h1>
-<p class="sub">
-  <a href="https://{{ t.domain }}" target="_blank" rel="noopener">{{ t.domain }}</a>
-  &nbsp;·&nbsp; fit <span class="score">{{ score if score is not none else '–' }}</span>
-  {% if verdict %}<span class="pill {{ verdict }}">{{ verdict }}</span>{% endif %}
-  &nbsp;·&nbsp; opened on <em>{{ d.hook_type }}</em>
-  {% if d.similarity_max %}&nbsp;·&nbsp; sameness {{ '%.2f'|format(d.similarity_max) }}{% endif %}
+<p class="lede">
+  <a href="https://{{ t.domain }}" target="_blank" rel="noopener" class="mono">{{ t.domain }}</a>
+  {% if score is not none %} · fit <strong class="mono">{{ score }}</strong>{% endif %}
+  {% if verdict == 'qualified' %} <span class="tag good">qualified</span>
+  {% elif verdict == 'needs_review' %} <span class="tag warn">needs review</span>
+  {% elif verdict %} <span class="tag bad">{{ verdict }}</span>{% endif %}
+  · opened on <span class="mute">{{ d.hook_type.replace('_', ' ') }}</span>
+  {% if d.similarity_max %} · sameness
+    <span class="mono">{{ "%.2f"|format(d.similarity_max) }}</span>{% endif %}
 </p>
 
-<div class="advice {{ 'ok' if email_ok }}">
-  {% if email_ok %}<strong>Email looks right.</strong>{% else %}<strong>Consider not emailing.</strong>{% endif %}
-  {{ advice_why }}
+<div class="note {{ 'ok' if email_ok }}">
+  <div>
+    <strong>{% if email_ok %}Email looks like the right move.{% else %}Consider not emailing.{% endif %}</strong>
+    {{ advice_why }}
+  </div>
 </div>
 
-<div class="split">
+<form method="post" action="/draft/{{ d.id }}/save">
+<div class="work">
   <div>
-    <form method="post" action="/draft/{{ d.id }}/save">
-      <h2>To</h2>
-      <input type="text" name="to" value="{{ contact.email if contact else '' }}"
-             placeholder="no address on file">
-      {% if contact and not contact.verified %}
-        <p class="bad" style="margin:6px 0 0;font-size:13px">
-          This address was read off {{ contact.source_url }} and has not been checked.</p>
-      {% endif %}
-
-      <h2>Subject</h2>
-      <input type="text" name="subject" value="{{ d.subject }}">
-
-      <h2>Body</h2>
-      <textarea name="body">{{ d.body }}</textarea>
-
-      <div class="row">
-        <button class="primary" type="submit" name="action" value="approve">Approve</button>
-        <button type="submit" name="action" value="save">Save edits</button>
-        <button type="submit" name="action" value="reject">Reject</button>
-        <a href="/" style="margin-left:auto" class="muted">back to queue</a>
+    <label class="field">
+      <span>Send to</span>
+      <input type="text" name="to" class="mono" value="{{ contact.email if contact else '' }}"
+             placeholder="no address on file — paste one and it is marked verified">
+    </label>
+    {% if contact and not contact.verified %}
+      <div class="note" style="border-left-color:var(--bad);margin-top:calc(-1 * var(--s3))">
+        <div>This address was read off
+          <a href="{{ contact.source_url }}" target="_blank" rel="noopener">{{ contact.source_url }}</a>
+          and nobody has checked it reaches a person.</div>
       </div>
-    </form>
+    {% endif %}
+
+    <label class="field">
+      <span>Subject</span>
+      <input type="text" name="subject" value="{{ d.subject }}">
+    </label>
+
+    <label class="field">
+      <span>Body
+        <span class="faint" style="text-transform:none;letter-spacing:0;font-weight:400">
+          — signature is added on send</span></span>
+      <textarea name="body">{{ d.body }}</textarea>
+    </label>
+
+    <div class="actionbar">
+      <button class="primary" type="submit" name="action" value="approve">Approve <kbd>a</kbd></button>
+      <button type="submit" name="action" value="save">Save <kbd>s</kbd></button>
+      <button class="danger" type="submit" name="action" value="reject">Reject <kbd>r</kbd></button>
+    </div>
   </div>
 
-  <div>
-    <h2>Facts it may cite</h2>
-    <p class="muted" style="font-size:13px;margin-top:-4px">
-      Red bar means this draft used it. Open the link to check the claim.</p>
+  <div class="rail">
+    <p class="eyebrow">Facts it may cite · {{ facts|length }}</p>
+    <p class="faint" style="font-size:var(--t-sm);margin:0 0 var(--s3)">
+      A red edge marks the ones this draft used. Open a link to check the claim.</p>
     {% for f in facts %}
       <div class="fact {{ 'cited' if f.id in cited_ids }}">
-        {{ f.claim }}<br>
-        <a href="{{ f.source_url }}" target="_blank" rel="noopener">{{ f.source_url }}</a>
-        {% if f.confidence != 'verified' %}<span class="muted"> · inferred, not quotable</span>{% endif %}
+        {{ f.claim }}
+        {% if f.confidence != 'verified' %}
+          <span class="tag warn" style="margin-left:4px">inferred, not quotable</span>
+        {% endif %}
+        <a class="src" href="{{ f.source_url }}" target="_blank" rel="noopener">{{ f.source_url }}</a>
       </div>
     {% else %}
-      <p class="muted">No verified facts. This draft was written without specific claims.</p>
+      <div class="card"><span class="mute">No verified facts. This draft was written
+        without specific claims about them, which is the correct behaviour.</span></div>
     {% endfor %}
 
     {% if app.url or app.how_to_apply %}
     <div class="card">
-      <h3>They publish a route in</h3>
-      {% if app.url %}<a href="{{ app.url }}" target="_blank" rel="noopener">{{ app.url }}</a><br>{% endif %}
-      {% if app.status %}<span class="pill {{ 'hold' if app.status == 'closed' }}">{{ app.status }}</span>{% endif %}
-      {% if app.deadline %} <span class="muted">{{ app.deadline }}</span>{% endif %}
-      {% if app.how_to_apply %}<p style="margin:8px 0 0">{{ app.how_to_apply }}</p>{% endif %}
-    </div>
-    {% endif %}
-
-    {% if observations %}
-    <div class="card">
-      <h3>Observations (uncited, never quoted)</h3>
-      {% for o in observations %}<p style="margin:0 0 7px">{{ o }}</p>{% endfor %}
+      <p class="eyebrow">How they want to be approached</p>
+      {% if app.status %}
+        <span class="tag {{ 'bad' if app.status == 'closed' else 'good' }}">{{ app.status }}</span>
+      {% endif %}
+      {% if app.deadline %}<span class="tag plain">{{ app.deadline }}</span>{% endif %}
+      {% if app.url %}
+        <p style="margin:var(--s3) 0 0">
+          <a href="{{ app.url }}" target="_blank" rel="noopener" class="mono"
+             style="font-size:var(--t-sm)">{{ app.url }}</a></p>
+      {% endif %}
+      {% if app.how_to_apply %}
+        <p class="mute" style="margin:var(--s2) 0 0;font-size:var(--t-md)">{{ app.how_to_apply }}</p>
+      {% endif %}
+      {% if app.asks_for %}
+        <p style="margin:var(--s2) 0 0;font-size:var(--t-md)">
+          <span class="faint">Bring</span> {{ app.asks_for|join(', ') }}</p>
+      {% endif %}
     </div>
     {% endif %}
 
     {% if criteria %}
     <div class="card">
-      <h3>Why it scored {{ score }}</h3>
+      <p class="eyebrow">Why it scored {{ score }}</p>
       {% for c in criteria %}
-        <div style="display:flex;gap:10px;font-size:13px;margin-bottom:4px">
-          <span style="width:74px" class="muted">{{ c.name }}</span>
-          <span class="score" style="width:46px">{{ c.points }}/{{ c.max }}</span>
-          <span>{{ c.note }}</span>
+        <div style="display:flex;gap:var(--s3);align-items:baseline;margin-bottom:6px;font-size:var(--t-md)">
+          <span class="faint" style="width:66px;flex:none">{{ c.name }}</span>
+          <span class="mono" style="width:44px;flex:none">{{ c.points }}/{{ c.max }}</span>
+          <span class="mute">{{ c.note }}</span>
         </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if observations %}
+    <div class="card">
+      <p class="eyebrow">Observations · uncited, never quoted</p>
+      {% for o in observations %}
+        <p class="mute" style="margin:0 0 var(--s2);font-size:var(--t-md)">{{ o }}</p>
       {% endfor %}
     </div>
     {% endif %}
   </div>
 </div>
+</form>
 {% endblock %}

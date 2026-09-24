@@ -51,8 +51,9 @@ def queue(request: Request):
                 "email": c.email if c else None,
                 "verified": c.verified if c else False, "email_ok": ok,
             })
+    pending = sum(1 for r in rows if r["status"] in ("generated", "edited"))
     return templates.TemplateResponse(request, "queue.html", {
-        "drafts": rows, "nav": "queue",
+        "drafts": rows, "nav": "queue", "pending": pending,
         "campaign": campaign.name if campaign else None,
         "threshold": settings().sameness_threshold,
     })
