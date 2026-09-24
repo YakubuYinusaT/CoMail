@@ -34,3 +34,6 @@ anthropic
 # generation support
 rapidfuzz
 tenacity
+
+# dev
+pytest

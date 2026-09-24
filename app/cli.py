@@ -16,6 +16,7 @@ import sys
 from sqlalchemy import func, select
 
 from app.crawl import crawl_many
+from app.extract import build_prompt, extract_target, load_pages
 from app.db import session
 from app.ingest import ingest
 from app.models import Contact, Page, Target
@@ -76,6 +77,41 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract(args: argparse.Namespace) -> int:
+    with session() as s:
+        domains = list(args.domains) if args.domains else list(
+            s.scalars(select(Target.domain).where(Target.enriched_at.is_(None)))
+        )
+    if not domains:
+        print("nothing to extract")
+        return 0
+
+    if args.show_prompt:
+        # Lets the prompt be read and argued with before a key exists.
+        for domain in domains:
+            pages = load_pages(domain)
+            print(f"\n===== {domain}: {len(pages)} pages =====")
+            print(build_prompt(domain, pages)[: args.chars])
+        return 0
+
+    failures = 0
+    for domain in domains:
+        try:
+            report = extract_target(domain, model=args.model)
+        except RuntimeError as exc:          # no key configured
+            print(f"  {domain}: {exc}")
+            return 2
+        except LookupError as exc:
+            print(f"  {domain}: {exc}")
+            failures += 1
+            continue
+        print(f"  {domain}: {len(report.kept_facts)} facts, "
+              f"{len(report.kept_contacts)} contacts, {len(report.dropped)} dropped")
+        for what, why in report.dropped[:5]:
+            print(f"      dropped: {what}  ({why})")
+    return 1 if failures else 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     with session() as s:
         targets = s.scalar(select(func.count()).select_from(Target)) or 0
@@ -124,6 +160,14 @@ def main(argv: list[str] | None = None) -> int:
     p_crawl.add_argument("--recrawl", action="store_true", help="include already-crawled targets")
     p_crawl.add_argument("--concurrency", type=int, default=4)
     p_crawl.set_defaults(func=cmd_crawl)
+
+    p_extract = sub.add_parser("extract", help="page text into sourced facts")
+    p_extract.add_argument("domains", nargs="*", help="default is everything not yet enriched")
+    p_extract.add_argument("--model", default="claude-sonnet-5")
+    p_extract.add_argument("--show-prompt", action="store_true",
+                           help="print the prompt instead of calling the model")
+    p_extract.add_argument("--chars", type=int, default=3000, help="with --show-prompt")
+    p_extract.set_defaults(func=cmd_extract)
 
     p_status = sub.add_parser("status", help="what is in the database")
     p_status.add_argument("--limit", type=int, default=25)
