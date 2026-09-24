@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Review queue — Cohandle{% endblock %}
+{% block body %}
+<h1>Review queue</h1>
+<p class="sub">{{ drafts|length }} draft{{ '' if drafts|length == 1 else 's' }} waiting.
+Nothing sends without you approving it.</p>
+
+{% if not drafts %}
+  <div class="empty">
+    No drafts yet.<br><br>
+    <code>python -m app.cli generate {{ campaign or 'raise-2026' }}</code>
+  </div>
+{% else %}
+<table>
+  <tr><th>Target</th><th>Fit</th><th>Address</th><th>Opening</th>
+      <th>Sameness</th><th>Channel</th><th>Status</th></tr>
+  {% for d in drafts %}
+  <tr>
+    <td><a href="/draft/{{ d.id }}"><strong>{{ d.name }}</strong></a>
+        <div class="muted">{{ d.domain }}</div></td>
+    <td><span class="score">{{ d.score if d.score is not none else '–' }}</span></td>
+    <td>{% if d.email %}{{ d.email }}
+          {% if not d.verified %}<div class="bad">unverified</div>{% endif %}
+        {% else %}<span class="muted">none</span>{% endif %}</td>
+    <td class="muted">{{ d.hook_type }}</td>
+    <td class="score {{ 'bad' if d.similarity_max and d.similarity_max > threshold }}">
+        {{ '%.2f'|format(d.similarity_max) if d.similarity_max else '–' }}</td>
+    <td>{% if d.email_ok %}<span class="pill email">email</span>
+        {% else %}<span class="pill hold">check</span>{% endif %}</td>
+    <td><span class="pill {{ d.status }}">{{ d.status }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

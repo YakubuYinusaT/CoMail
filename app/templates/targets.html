@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Targets — Cohandle{% endblock %}
+{% block body %}
+<h1>Targets</h1>
+<p class="sub">{{ rows|length }} in the database.</p>
+{% if not rows %}
+  <div class="empty">Nothing ingested yet.<br><br>
+    <code>python -m app.cli ingest targets.txt</code></div>
+{% else %}
+<table>
+  <tr><th>Target</th><th>Fit</th><th>Verdict</th><th>Channel</th>
+      <th>Pages</th><th>Facts</th><th>Addresses</th><th>Draft</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{% if r.draft_id %}<a href="/draft/{{ r.draft_id }}">{{ r.name or r.domain }}</a>
+        {% else %}{{ r.name or r.domain }}{% endif %}
+        <div class="muted">{{ r.domain }}</div></td>
+    <td><span class="score">{{ r.score if r.score is not none else '–' }}</span></td>
+    <td>{% if r.verdict %}<span class="pill {{ r.verdict }}">{{ r.verdict }}</span>
+        {% else %}<span class="muted">–</span>{% endif %}</td>
+    <td>{% if r.channel %}<span class="pill {{ r.channel }}">{{ r.channel }}</span>
+        {% else %}<span class="muted">–</span>{% endif %}</td>
+    <td class="score">{{ r.pages }}</td>
+    <td class="score">{{ r.facts }}</td>
+    <td class="score">{{ r.contacts }}{% if r.unverified %}
+        <span class="bad" style="font-size:12px"> {{ r.unverified }} unchecked</span>{% endif %}</td>
+    <td>{% if r.draft_id %}<span class="pill {{ r.draft_status }}">{{ r.draft_status }}</span>
+        {% else %}<span class="muted">–</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

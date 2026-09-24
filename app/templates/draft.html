@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ t.name or t.domain }} — Cohandle{% endblock %}
+{% block body %}
+<h1>{{ t.name or t.domain }}</h1>
+<p class="sub">
+  <a href="https://{{ t.domain }}" target="_blank" rel="noopener">{{ t.domain }}</a>
+  &nbsp;·&nbsp; fit <span class="score">{{ score if score is not none else '–' }}</span>
+  {% if verdict %}<span class="pill {{ verdict }}">{{ verdict }}</span>{% endif %}
+  &nbsp;·&nbsp; opened on <em>{{ d.hook_type }}</em>
+  {% if d.similarity_max %}&nbsp;·&nbsp; sameness {{ '%.2f'|format(d.similarity_max) }}{% endif %}
+</p>
+
+<div class="advice {{ 'ok' if email_ok }}">
+  {% if email_ok %}<strong>Email looks right.</strong>{% else %}<strong>Consider not emailing.</strong>{% endif %}
+  {{ advice_why }}
+</div>
+
+<div class="split">
+  <div>
+    <form method="post" action="/draft/{{ d.id }}/save">
+      <h2>To</h2>
+      <input type="text" name="to" value="{{ contact.email if contact else '' }}"
+             placeholder="no address on file">
+      {% if contact and not contact.verified %}
+        <p class="bad" style="margin:6px 0 0;font-size:13px">
+          This address was read off {{ contact.source_url }} and has not been checked.</p>
+      {% endif %}
+
+      <h2>Subject</h2>
+      <input type="text" name="subject" value="{{ d.subject }}">
+
+      <h2>Body</h2>
+      <textarea name="body">{{ d.body }}</textarea>
+
+      <div class="row">
+        <button class="primary" type="submit" name="action" value="approve">Approve</button>
+        <button type="submit" name="action" value="save">Save edits</button>
+        <button type="submit" name="action" value="reject">Reject</button>
+        <a href="/" style="margin-left:auto" class="muted">back to queue</a>
+      </div>
+    </form>
+  </div>
+
+  <div>
+    <h2>Facts it may cite</h2>
+    <p class="muted" style="font-size:13px;margin-top:-4px">
+      Red bar means this draft used it. Open the link to check the claim.</p>
+    {% for f in facts %}
+      <div class="fact {{ 'cited' if f.id in cited_ids }}">
+        {{ f.claim }}<br>
+        <a href="{{ f.source_url }}" target="_blank" rel="noopener">{{ f.source_url }}</a>
+        {% if f.confidence != 'verified' %}<span class="muted"> · inferred, not quotable</span>{% endif %}
+      </div>
+    {% else %}
+      <p class="muted">No verified facts. This draft was written without specific claims.</p>
+    {% endfor %}
+
+    {% if app.url or app.how_to_apply %}
+    <div class="card">
+      <h3>They publish a route in</h3>
+      {% if app.url %}<a href="{{ app.url }}" target="_blank" rel="noopener">{{ app.url }}</a><br>{% endif %}
+      {% if app.status %}<span class="pill {{ 'hold' if app.status == 'closed' }}">{{ app.status }}</span>{% endif %}
+      {% if app.deadline %} <span class="muted">{{ app.deadline }}</span>{% endif %}
+      {% if app.how_to_apply %}<p style="margin:8px 0 0">{{ app.how_to_apply }}</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if observations %}
+    <div class="card">
+      <h3>Observations (uncited, never quoted)</h3>
+      {% for o in observations %}<p style="margin:0 0 7px">{{ o }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if criteria %}
+    <div class="card">
+      <h3>Why it scored {{ score }}</h3>
+      {% for c in criteria %}
+        <div style="display:flex;gap:10px;font-size:13px;margin-bottom:4px">
+          <span style="width:74px" class="muted">{{ c.name }}</span>
+          <span class="score" style="width:46px">{{ c.points }}/{{ c.max }}</span>
+          <span>{{ c.note }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

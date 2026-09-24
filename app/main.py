@@ -7,59 +7,14 @@ described in the build spec hangs off this.
 
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+from sqlalchemy import text
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")
-
-_engine: Engine | None = None
-
-
-def _sqlalchemy_url(url: str) -> str:
-    """Point SQLAlchemy at psycopg 3.
-
-    Neon hands out `postgresql://...`, which SQLAlchemy resolves to
-    psycopg2 — a driver this image does not install. Rewriting the scheme
-    here means the connection string can be pasted from the Neon console
-    or Secret Manager unchanged, instead of everyone having to remember
-    to edit it.
-    """
-    if url.startswith("postgresql+"):
-        return url
-    if url.startswith("postgresql://"):
-        return "postgresql+psycopg://" + url[len("postgresql://"):]
-    if url.startswith("postgres://"):
-        return "postgresql+psycopg://" + url[len("postgres://"):]
-    return url
-
-
-def engine() -> Engine:
-    """One pooled engine per process.
-
-    Cloud Run runs several containers under load and Neon's pooler counts
-    every connection, so keep the per-process pool small: the effective
-    total is pool_size multiplied by the number of live instances.
-    """
-    global _engine
-    if _engine is None:
-        if not DATABASE_URL:
-            raise RuntimeError("DATABASE_URL is not set")
-        _engine = create_engine(
-            _sqlalchemy_url(DATABASE_URL),
-            pool_size=3,
-            max_overflow=2,
-            pool_pre_ping=True,   # Neon suspends idle computes; revalidate
-            pool_recycle=300,
-            future=True,
-        )
-    return _engine
-
+from app.config import settings
+from app.db import engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,14 +22,19 @@ async def lifespan(app: FastAPI):
     # will not route traffic to a revision whose container never became
     # ready, so a bad DATABASE_URL stops the rollout instead of reaching
     # users.
-    if not DATABASE_URL:
+    if not settings().database_url:
         raise RuntimeError("DATABASE_URL is not set; refusing to start")
     yield
-    if _engine is not None:
-        _engine.dispose()
+    engine().dispose()
 
 
 app = FastAPI(title="Cohandle", lifespan=lifespan)
+
+# The review queue. Mounted last so /healthz and /readyz keep their
+# meaning for Cloud Run's probes.
+from app.web import router as web_router  # noqa: E402
+
+app.include_router(web_router)
 
 
 @app.get("/healthz")
@@ -98,6 +58,7 @@ def readyz() -> dict[str, object]:
 
 def require_internal(request: Request) -> None:
     """Guard for endpoints the scheduler calls rather than a person."""
+    INTERNAL_TOKEN = settings().internal_token
     if not INTERNAL_TOKEN:
         raise HTTPException(503, "INTERNAL_TOKEN is not configured")
     if request.headers.get("x-internal-token") != INTERNAL_TOKEN:

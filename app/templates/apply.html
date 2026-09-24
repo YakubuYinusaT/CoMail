@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Apply and intro — Cohandle{% endblock %}
+{% block body %}
+<h1>Apply &amp; intro</h1>
+<p class="sub">Targets that publish a route in, or need a warm introduction.
+Email is not the move for these.</p>
+{% if not rows %}
+  <div class="empty">Nothing routed here.</div>
+{% else %}
+  {% for r in rows %}
+  <div class="card">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+      <strong style="font-size:16px">{{ r.name or r.domain }}</strong>
+      <span class="pill {{ r.channel }}">{{ r.channel }}</span>
+      {% if r.status %}<span class="pill {{ 'hold' if r.status == 'closed' }}">{{ r.status }}</span>{% endif %}
+      {% if r.score is not none %}<span class="muted">fit {{ r.score }}</span>{% endif %}
+    </div>
+    {% if r.url %}<p style="margin:9px 0 4px">
+      <a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a></p>{% endif %}
+    {% if r.how %}<p style="margin:4px 0" class="muted">{{ r.how }}</p>{% endif %}
+    {% if r.deadline %}<p style="margin:4px 0"><strong>Deadline</strong> {{ r.deadline }}</p>{% endif %}
+    {% if r.asks_for %}<p style="margin:4px 0"><strong>Bring</strong> {{ r.asks_for|join(', ') }}</p>{% endif %}
+    {% if r.note %}<p style="margin:4px 0" class="muted">{{ r.note }}</p>{% endif %}
+    {% if r.channel == 'intro' and r.channel_note %}
+      <p style="margin:4px 0" class="warn">{{ r.channel_note }}</p>{% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}
