@@ -45,6 +45,25 @@ class PortfolioCompany(BaseModel):
     one_line: str | None = Field(default=None, max_length=300)
 
 
+class ApplicationInfo(BaseModel):
+    """How this organisation actually wants to be approached.
+
+    The most useful thing on the page for a target routed to 'form', and
+    the thing that decides whether applying is even possible right now.
+    """
+
+    url: str | None = None
+    # In their own terms: "submit a deck through the portal", "email a
+    # one-pager first", "applications reviewed monthly".
+    how_to_apply: str | None = Field(default=None, max_length=600)
+    status: Literal["open", "closed", "rolling", "cyclical", "unknown"] = "unknown"
+    # Whatever the page says: a date, "Q1 2027", "next cohort in March".
+    deadline: str | None = Field(default=None, max_length=120)
+    # Deck, financials, references, video, whatever they list.
+    asks_for: list[str] = Field(default_factory=list)
+    notes: str | None = Field(default=None, max_length=600)
+
+
 class ExtractedProfile(BaseModel):
     """Structured summary. Feeds qualification, never quoted directly."""
 
@@ -60,6 +79,11 @@ class ExtractedProfile(BaseModel):
     # None means the site does not say. Only false when it says so.
     accepts_cold: bool | None = None
     application_url: str | None = None
+    application: ApplicationInfo = Field(default_factory=ApplicationInfo)
+    # Uncited and explicitly so: anything a founder would want to know
+    # before approaching. Never quoted in an email, read by a person
+    # before they decide to approach.
+    observations: list[str] = Field(default_factory=list)
 
 
 class ExtractedFact(BaseModel):
@@ -159,10 +183,14 @@ def validate(
         report.kept_contacts.append(contact)
 
     profile = extraction.profile.model_copy(deep=True)
-    if profile.thesis_quote:
-        if _norm_text(profile.thesis_quote) not in corpus:
-            report.note(profile.thesis_quote, "thesis quote not found in any crawled page")
-            profile.thesis_quote = None
+    if profile.thesis_quote and _norm_text(profile.thesis_quote) not in corpus:
+        # Not verbatim, so it cannot go in quotation marks. It is still
+        # a fair summary of what they say, and a person vetting this
+        # would rather see it than have it silently disappear. Demoted
+        # to an observation, which is never quoted.
+        report.note(profile.thesis_quote, "not verbatim; kept as an observation, not quotable")
+        profile.observations.append(f"Paraphrased positioning: {profile.thesis_quote}")
+        profile.thesis_quote = None
 
     if profile.application_url and _norm_url(profile.application_url) not in allowed:
         # Not necessarily wrong — an apply page we did not crawl is still
@@ -177,30 +205,54 @@ def validate(
 # --------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """\
-You read an organisation's own website and record what it says about itself.
+You read an organisation's own website and build a profile of it for a
+founder deciding whether and how to approach them.
 
-You are building material that will be quoted back to this organisation in
-a cold email. A claim that is wrong is worse than no claim at all, so the
-standard is not "probably true" — it is "stated on the page".
+Be thorough and curious. Read everything you are given and write down what
+a founder would actually want to know. Do not be stingy: an observation
+that turns out to be minor costs nothing, and a person reads all of this
+before acting on any of it.
 
-Rules, in order of importance:
+`facts` is your main output and the one to be generous with. Aim for
+eight to fifteen of them per organisation: who they are, what they back,
+who they have backed, cheque sizes, what they say about themselves, who
+works there, anything a founder could point at. Citing is easy — each
+page's URL is printed in its header below, so copy it character for
+character into source_url. An expected fact that is missing is a worse
+outcome than one that turns out to be minor.
 
-1. Every fact carries the exact source_url of the page you read it on.
-   Use the URLs given in the page headers below, character for character.
-2. Record only what the page states. Do not infer, extrapolate, or use
-   anything you know about this organisation from elsewhere.
-3. A thesis_quote must be a verbatim span from the page. Never paraphrase
-   into that field.
-4. An email address goes in contacts only if it appears literally on the
-   page you cite.
-5. Mark a fact "inferred" when the page implies it without saying it.
-   Inferred facts inform scoring but are never quoted, so when in doubt,
-   mark inferred rather than dropping it.
-6. accepts_cold is false only where the site says it does not take
-   unsolicited approaches. Absence of a statement means null, not true.
+`observations` is additional, not a substitute. It is where the things
+you cannot pin to a single page go: impressions, patterns across pages,
+what they emphasise, what is conspicuously missing. Do not move material
+out of facts and into observations because you are being careful. If the
+page says it, it is a fact, and it gets a URL.
 
-Write each claim as one plain sentence someone could check by opening the
-source URL.
+Use confidence "inferred" freely for facts a page implies rather than
+states. Inferred facts inform judgement and are never quoted, so marking
+something inferred is how you include it, not how you discard it.
+
+APPLICATION PROCESS. Treat this as the most useful thing on the site, and
+fill `application` carefully:
+
+- url: where a founder actually submits. Not the contact page, unless
+  that genuinely is the route.
+- how_to_apply: what they ask you to do, in their terms. "Submit through
+  the portal", "email a one-pager first", "we review monthly".
+- status: open, closed, rolling, cyclical or unknown. If applications are
+  shut, between cohorts, or open only at certain times, say so. That
+  decides whether approaching is possible at all right now.
+- deadline: any date or window they give, however vague.
+- asks_for: deck, financials, references, video, whatever they list.
+- notes: anything else about the process worth knowing.
+
+Set accepts_cold to false only where they say they do not take
+unsolicited approaches. Silence means null, not true.
+
+A thesis_quote must be a verbatim span from a page. To capture their
+positioning in your own words, use an observation instead.
+
+Contacts: an email address only if it appears literally on the page you
+cite.
 """
 
 
@@ -232,7 +284,10 @@ def call_model(domain: str, pages: dict[str, str], model: str | None = None) -> 
         system=SYSTEM_PROMPT,
         user=build_prompt(domain, pages),
         response_model=Extraction,
-        max_tokens=4096,
+        # The exploratory prompt asks for observations and a full
+        # application block on top of the facts, which overran 4096 on
+        # real sites.
+        max_tokens=10_000,
         model=model,
     )
 

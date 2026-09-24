@@ -204,6 +204,46 @@ def cmd_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_apply(args: argparse.Namespace) -> int:
+    """The worklist for targets that take applications, not email."""
+    STATUS_MARK = {"open": "OPEN", "rolling": "ROLLING", "cyclical": "CYCLICAL",
+                   "closed": "CLOSED", "unknown": "?"}
+    with session() as s:
+        targets = list(s.scalars(
+            select(Target).where(Target.channel.in_(["form", "intro"]))
+            .order_by(Target.channel, Target.domain)
+        ))
+    if not targets:
+        print("nothing routed to a form or an introduction")
+        return 0
+
+    for t in targets:
+        app = (t.profile or {}).get("application") or {}
+        status = (app.get("status") or "unknown").lower()
+        print(f"\n{t.name or t.domain}  [{t.channel}]  {STATUS_MARK.get(status, '?')}")
+        if t.channel == "intro":
+            print(f"  {t.channel_note or 'needs a warm introduction'}")
+        if app.get("url") or t.channel_note:
+            print(f"  apply at   {app.get('url') or t.channel_note}")
+        if app.get("how_to_apply"):
+            print(f"  how        {app['how_to_apply']}")
+        if app.get("deadline"):
+            print(f"  deadline   {app['deadline']}")
+        if app.get("asks_for"):
+            print(f"  bring      {', '.join(app['asks_for'])}")
+        if app.get("notes"):
+            print(f"  note       {app['notes']}")
+        if args.verbose:
+            for o in (t.profile or {}).get("observations", [])[:6]:
+                print(f"    - {o}")
+
+    closed = [t.domain for t in targets
+              if ((t.profile or {}).get("application") or {}).get("status") == "closed"]
+    if closed:
+        print(f"\nclosed right now, do not spend time on: {', '.join(closed)}")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     with session() as s:
         targets = s.scalar(select(func.count()).select_from(Target)) or 0
@@ -281,6 +321,10 @@ def main(argv: list[str] | None = None) -> int:
     p_generate.add_argument("--retries", type=int, default=2,
                             help="regeneration attempts for drafts that read alike")
     p_generate.set_defaults(func=cmd_generate)
+
+    p_apply = sub.add_parser("apply", help="worklist for form and intro targets")
+    p_apply.add_argument("-v", "--verbose", action="store_true", help="include observations")
+    p_apply.set_defaults(func=cmd_apply)
 
     p_status = sub.add_parser("status", help="what is in the database")
     p_status.add_argument("--limit", type=int, default=25)

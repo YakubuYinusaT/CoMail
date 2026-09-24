@@ -98,14 +98,17 @@ def test_email_cited_to_the_wrong_page_is_dropped():
     assert report.kept_contacts == []
 
 
-def test_paraphrased_thesis_quote_is_stripped():
-    """Close is not good enough when it will appear in quotation marks."""
+def test_a_paraphrase_is_demoted_rather_than_binned():
+    """Close is not good enough for quotation marks, but it is still a
+    fair summary and a person vetting this would rather see it. It moves
+    to observations, which are never quoted."""
     ex = _extraction(profile=ExtractedProfile(
         thesis_quote="We back pre-seed founders across the African continent."
     ))
     profile, report = validate(ex, PAGES)
     assert profile.thesis_quote is None
-    assert any("thesis quote not found" in why for _, why in report.dropped)
+    assert any("African continent" in o for o in profile.observations)
+    assert any("not verbatim" in why for _, why in report.dropped)
 
 
 def test_verbatim_thesis_quote_survives():
