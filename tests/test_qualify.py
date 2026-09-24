@@ -176,3 +176,19 @@ def test_an_undated_fund_is_not_treated_as_dormant():
     """No date on the site is not evidence of a dead fund."""
     v = assess(_with(last_deal_at=None), SENDER)
     assert v.verdict == "qualified"
+
+
+def test_early_stage_is_evidence_of_fit_not_confirmation():
+    """Funds very often say only 'early stage'. Treating that as unknown
+    sends most of the market to review; treating it as a match overstates
+    it. It scores between."""
+    v = assess(_with(stages=["Early"]), SENDER)
+    stage = next(c for c in v.criteria if c.name == "stage")
+    assert stage.max_points // 3 < stage.points < stage.max_points
+    assert "may include pre-seed" in stage.note
+
+
+def test_a_stated_stage_still_beats_an_umbrella_term():
+    v = assess(_with(stages=["pre-seed", "early stage"]), SENDER)
+    stage = next(c for c in v.criteria if c.name == "stage")
+    assert stage.points == stage.max_points

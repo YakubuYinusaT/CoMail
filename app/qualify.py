@@ -29,6 +29,7 @@ from sqlalchemy import select
 from app.db import session
 from app.models import Assessment, Campaign, Contact, Target
 from app.taxonomy import (
+    any_stage_umbrella,
     canonical_sector,
     geo_covers,
     normalise_all,
@@ -125,6 +126,11 @@ def score_stage(profile: dict, sender: SenderProfile) -> Criterion:
         return Criterion("stage", cap, cap, f"invests at {sender.stage}")
     if stage_floor_above(stages, sender.stage):
         return Criterion("stage", 0, cap, f"earliest stage is later than {sender.stage}")
+    if any_stage_umbrella(stages):
+        # "Early stage" spans pre-seed to Series A. Evidence of fit, not
+        # confirmation, so it scores well short of a stated match.
+        return Criterion("stage", round(cap * 0.6), cap,
+                         f"says '{', '.join(stages[:2])}', which may include {sender.stage}")
     return Criterion("stage", cap // 3, cap, f"stage unclear: {', '.join(stages[:3])}")
 
 

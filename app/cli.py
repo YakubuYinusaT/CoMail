@@ -255,7 +255,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_extract = sub.add_parser("extract", help="page text into sourced facts")
     p_extract.add_argument("domains", nargs="*", help="default is everything not yet enriched")
-    p_extract.add_argument("--model", default="claude-sonnet-5")
+    p_extract.add_argument("--model", default=None,
+                           help="override; default comes from LLM_PROVIDER")
     p_extract.add_argument("--show-prompt", action="store_true",
                            help="print the prompt instead of calling the model")
     p_extract.add_argument("--chars", type=int, default=3000, help="with --show-prompt")
@@ -275,7 +276,8 @@ def main(argv: list[str] | None = None) -> int:
     p_generate = sub.add_parser("generate", help="draft emails for qualified targets")
     p_generate.add_argument("campaign")
     p_generate.add_argument("domains", nargs="*")
-    p_generate.add_argument("--model", default="claude-sonnet-5")
+    p_generate.add_argument("--model", default=None,
+                            help="override; default comes from LLM_PROVIDER")
     p_generate.add_argument("--retries", type=int, default=2,
                             help="regeneration attempts for drafts that read alike")
     p_generate.set_defaults(func=cmd_generate)

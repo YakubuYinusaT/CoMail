@@ -113,8 +113,31 @@ def _canonical(value: str, table: dict[str, tuple[str, ...]]) -> str | None:
     return best[1] if best else None
 
 
+# Funds very often say only "early stage", which spans pre-seed through
+# Series A. It is evidence of fit, not confirmation of it, so it is kept
+# separate from the canonical stages and scored as partial.
+STAGE_UMBRELLA: tuple[str, ...] = (
+    "early stage", "early-stage", "early", "earliest", "day one", "day zero",
+)
+
+
 def canonical_stage(value: str) -> str | None:
     return _canonical(value, STAGE_SYNONYMS)
+
+
+def is_stage_umbrella(value: str) -> bool:
+    text = re.sub(r"[^a-z0-9\s-]", " ", (value or "").lower())
+    text = re.sub(r"\s+", " ", text).strip()
+    if canonical_stage(text):
+        return False        # a specific stage beats an umbrella term
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(u)}(?![a-z0-9])", text)
+        for u in STAGE_UMBRELLA
+    )
+
+
+def any_stage_umbrella(values: list[str]) -> bool:
+    return any(is_stage_umbrella(v) for v in values or [])
 
 
 def canonical_sector(value: str) -> str | None:
