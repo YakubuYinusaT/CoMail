@@ -18,3 +18,6 @@ requirements.lock.txt
 
 # Local tooling
 .neon
+
+# alembic
+alembic/README
