@@ -108,7 +108,10 @@ def cmd_extract(args: argparse.Namespace) -> int:
             failures += 1
             continue
         print(f"  {domain}: {len(report.kept_facts)} facts, "
-              f"{len(report.kept_contacts)} contacts, {len(report.dropped)} dropped")
+              f"{len(report.kept_contacts)} addresses found, "
+              f"{len(report.dropped)} dropped")
+        for c in report.kept_contacts:
+            print(f"      found: {c.email}  <- {c.source_url}  (unverified)")
         for what, why in report.dropped[:5]:
             print(f"      dropped: {what}  ({why})")
     return 1 if failures else 0
@@ -189,6 +192,8 @@ def cmd_generate(args: argparse.Namespace) -> int:
             marks.append("still similar")
         suffix = f"   ({'; '.join(marks)})" if marks else ""
         print(f"  drafted   {domain:32} sameness {worst:.2f}{suffix}")
+        ok, why = report.advice.get(domain, (True, ""))
+        print(f"            {'email looks right' if ok else 'CONSIDER NOT EMAILING'}: {why}")
 
     for domain, why in report.failed:
         print(f"  failed    {domain:32} {why}")
@@ -201,6 +206,52 @@ def cmd_generate(args: argparse.Namespace) -> int:
     print(f"\n{len(report.written)} drafted "
           f"({len(report.without_facts)} without verified facts), "
           f"{len(report.failed)} failed")
+    return 0
+
+
+def cmd_contact(args: argparse.Namespace) -> int:
+    """Attach an address the operator found. The model never does this."""
+    email = args.email.strip().lower()
+    with session() as s:
+        t = s.scalar(select(Target).where(Target.domain == args.domain))
+        if t is None:
+            print(f"no target for {args.domain}; ingest it first")
+            return 2
+        existing = s.scalar(select(Contact).where(
+            Contact.target_id == t.id, Contact.email == email))
+        if existing:
+            existing.name, existing.role = args.name, args.role
+            existing.verified = True
+            print(f"confirmed {email} on {t.domain}")
+        else:
+            s.add(Contact(target_id=t.id, email=email, name=args.name,
+                          role=args.role, verified=True,
+                          source_url=args.source or "operator:supplied"))
+            print(f"added {email} to {t.domain}")
+    return 0
+
+
+def cmd_setapply(args: argparse.Namespace) -> int:
+    """Correct an application URL or status the extractor got wrong."""
+    with session() as s:
+        t = s.scalar(select(Target).where(Target.domain == args.domain))
+        if t is None:
+            print(f"no target for {args.domain}")
+            return 2
+        profile = dict(t.profile or {})
+        app = dict(profile.get("application") or {})
+        if args.url:
+            app["url"] = args.url
+            profile["application_url"] = args.url
+        if args.status:
+            app["status"] = args.status
+        if args.deadline:
+            app["deadline"] = args.deadline
+        app["notes"] = ((app.get("notes") or "") + "  [corrected by operator]").strip()
+        profile["application"] = app
+        t.profile = profile
+        print(f"{t.domain}: url={app.get('url')} status={app.get('status')} "
+              f"deadline={app.get('deadline')}")
     return 0
 
 
@@ -321,6 +372,22 @@ def main(argv: list[str] | None = None) -> int:
     p_generate.add_argument("--retries", type=int, default=2,
                             help="regeneration attempts for drafts that read alike")
     p_generate.set_defaults(func=cmd_generate)
+
+    p_contact = sub.add_parser("contact", help="attach an address you found")
+    p_contact.add_argument("domain")
+    p_contact.add_argument("email")
+    p_contact.add_argument("--name")
+    p_contact.add_argument("--role")
+    p_contact.add_argument("--source", help="where you got it; recorded for vetting")
+    p_contact.set_defaults(func=cmd_contact)
+
+    p_setapply = sub.add_parser("setapply", help="correct an application url or status")
+    p_setapply.add_argument("domain")
+    p_setapply.add_argument("--url")
+    p_setapply.add_argument("--status",
+                            choices=["open", "closed", "rolling", "cyclical", "unknown"])
+    p_setapply.add_argument("--deadline")
+    p_setapply.set_defaults(func=cmd_setapply)
 
     p_apply = sub.add_parser("apply", help="worklist for form and intro targets")
     p_apply.add_argument("-v", "--verbose", action="store_true", help="include observations")

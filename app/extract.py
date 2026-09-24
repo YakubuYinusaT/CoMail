@@ -177,6 +177,10 @@ def validate(
         if not EMAIL_RE.fullmatch(contact.email.strip()):
             report.note(contact.email, "not a valid address")
             continue
+        # The anti-manufacturing check, and the only one that matters
+        # here. A real address is on the page; an invented one is not.
+        # This caught five plausible firstname.lastname@ addresses for
+        # real named staff on a single run.
         if contact.email.lower() not in allowed[key].lower():
             report.note(contact.email, "address does not appear on that page")
             continue
@@ -251,8 +255,10 @@ unsolicited approaches. Silence means null, not true.
 A thesis_quote must be a verbatim span from a page. To capture their
 positioning in your own words, use an observation instead.
 
-Contacts: an email address only if it appears literally on the page you
-cite.
+Contacts: record an email address only when it appears literally on the
+page you cite, character for character. Never construct one from a
+pattern, however obvious the pattern looks. If you can see a person's
+name and the domain but not their address, that is not an address.
 """
 
 
@@ -344,6 +350,8 @@ def store(domain: str, profile: ExtractedProfile, report: ValidationReport) -> N
                 )
             )
             if existing is None:
+                # Found on a page, so it is real text — but nobody has
+                # checked it reaches a person yet.
                 s.add(
                     Contact(
                         target_id=target.id,
@@ -351,6 +359,7 @@ def store(domain: str, profile: ExtractedProfile, report: ValidationReport) -> N
                         name=contact.name,
                         role=contact.role,
                         source_url=contact.source_url,
+                        verified=False,
                     )
                 )
 

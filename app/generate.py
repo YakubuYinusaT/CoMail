@@ -35,7 +35,7 @@ from app.config import settings
 from app.db import session
 from app.llm import ProviderNotConfigured, complete
 from app.models import Campaign, Contact, Draft, DraftFact, Fact, Target
-from app.qualify import SenderProfile, _parse_when
+from app.qualify import SenderProfile, _parse_when, email_advice
 from app.sameness import compare_batch
 from app.taxonomy import canonical_sector, normalise_all
 
@@ -148,10 +148,20 @@ class GeneratedEmail(BaseModel):
 SYSTEM_PROMPT = """\
 You write one cold email from a founder to an investor.
 
-The single hard rule: every statement you make *about the recipient* must
-come from the supplied facts. Nothing you happen to know about them, and
-nothing inferred from their name or their sector. If a fact is not in the
-list, you do not know it.
+Two hard rules, and they cut in both directions.
+
+About the recipient: every statement comes from the supplied facts.
+Nothing you happen to know about them, nothing inferred from their name
+or their sector. If a fact is not in the list, you do not know it.
+
+About the sender: every claim comes from SENDER CONTEXT below, and that
+includes traction. Do not write that they have an MVP, users, revenue,
+partners, pilots or signed agreements unless it says so. Inventing the
+sender's progress is worse than inventing the recipient's, because the
+first meeting is where it falls apart. Where the context states what has
+*not* happened yet, respect that. A pre-seed company with no pilot is a
+normal thing to be, and saying so plainly reads better than a claim that
+will not survive one question.
 
 Everything else is your judgement.
 
@@ -176,9 +186,18 @@ Vary deliberately across a batch — length between 120 and 220 words,
 prose or bullets in the middle, number leading or following, closing on a
 question or a direct ask, subject line never a fixed pattern.
 
-Never write: an em dash, "I hope this finds you well", "reaching out",
-"circling back", "synergy", "excited to", or their own marketing
-adjectives back at them. No signature; it is appended afterwards.
+Banned outright. These appear in every cold email an investor deletes,
+and one of them is enough to make the rest read like the others:
+
+  em dashes; "I hope this finds you well"; "reaching out"; "circling
+  back"; "synergy" or "synergies"; "excited to"; "aligns perfectly";
+  "perfect fit"; "significant fit"; "leverage" as a verb; "innovative";
+  "disrupting"; "cutting-edge"; "passionate about"; "we believe there is";
+  "would love to"; and their own marketing adjectives quoted back at them.
+
+Write no greeting line and no sign-off. Not "Dear X", not "Best regards",
+not a name. The email starts at the first real sentence and stops at the
+last one. Both are added afterwards.
 
 Return the fact ids you used, and one short line in `opened_on` naming
 how you chose to open.
@@ -259,6 +278,8 @@ def validate_used_facts(email: GeneratedEmail, allowed: list[Fact]) -> list[Fact
 @dataclass
 class GenerationReport:
     written: list[str] = field(default_factory=list)
+    # domain -> (email is recommended, why)
+    advice: dict[str, tuple[bool, str]] = field(default_factory=dict)
     without_facts: list[str] = field(default_factory=list)
     failed: list[tuple[str, str]] = field(default_factory=list)
     regenerated: list[str] = field(default_factory=list)
@@ -281,8 +302,15 @@ def generate_campaign(
             raise LookupError(f"no campaign named {campaign_name!r}")
         sender = SenderProfile.from_dict(campaign.sender_profile or {})
 
-        stmt = select(Target).where(
-            Target.enriched_at.is_not(None), Target.channel == "email"
+        # Anything with an address the operator put there. The channel
+        # recommendation rides along with the draft rather than deciding
+        # whether one exists.
+        stmt = (
+            select(Target)
+            .where(Target.enriched_at.is_not(None))
+            .where(Target.id.in_(
+                select(Contact.target_id).where(Contact.email.is_not(None))
+            ))
         )
         if only:
             stmt = stmt.where(Target.domain.in_(only))
@@ -334,6 +362,7 @@ def generate_campaign(
 
             drafted[target.domain] = (draft, evidence)
             report.written.append(target.domain)
+            report.advice[target.domain] = email_advice(target.profile or {}, True)
 
         for attempt in range(max_retries + 1):
             if not drafted:

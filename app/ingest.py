@@ -171,6 +171,7 @@ def ingest(blob: str, kind: str = "vc") -> IngestResult:
                         Contact(
                             target_id=target.id,
                             email=entry.email,
+                            verified=True,
                             source_url="operator:pasted-list",
                         )
                     )

@@ -4,14 +4,16 @@ These run without an API key, on purpose. The guards in `validate()` are
 plain string comparisons, so the hallucinations they exist to catch can
 be written down as fixtures and checked exactly.
 
-The fake extraction below is deliberately hostile: it contains the four
-mistakes a confident model actually makes.
+The fake extraction below is deliberately hostile.
+
+Email addresses are no longer extracted at all — the operator supplies
+them — so the tests that covered invented addresses are gone with the
+field. That failure is now impossible rather than guarded.
 """
 
 from __future__ import annotations
 
 from app.extract import (
-    ExtractedContact,
     ExtractedFact,
     ExtractedProfile,
     Extraction,
@@ -35,11 +37,7 @@ PAGES = {
 
 
 def _extraction(**kw) -> Extraction:
-    base = dict(
-        profile=ExtractedProfile(name="Example Ventures"),
-        facts=[],
-        contacts=[],
-    )
+    base = dict(profile=ExtractedProfile(name="Example Ventures"), facts=[])
     base.update(kw)
     return Extraction(**base)
 
@@ -71,31 +69,7 @@ def test_fact_citing_a_page_we_never_crawled_is_dropped():
     assert "not a crawled page" in report.dropped[0][1]
 
 
-def test_invented_email_is_dropped():
-    """A fabricated address is the one that gets the email bounced."""
-    ex = _extraction(contacts=[
-        ExtractedContact(email="partners@example.vc", source_url="https://example.vc/contact")
-    ])
-    _, report = validate(ex, PAGES)
-    assert report.kept_contacts == []
-    assert "does not appear on that page" in report.dropped[0][1]
 
-
-def test_real_email_on_the_right_page_is_kept():
-    ex = _extraction(contacts=[
-        ExtractedContact(email="hello@example.vc", source_url="https://example.vc/contact")
-    ])
-    _, report = validate(ex, PAGES)
-    assert [c.email for c in report.kept_contacts] == ["hello@example.vc"]
-
-
-def test_email_cited_to_the_wrong_page_is_dropped():
-    """Right address, wrong source. Still wrong: the citation must hold."""
-    ex = _extraction(contacts=[
-        ExtractedContact(email="hello@example.vc", source_url="https://example.vc/portfolio")
-    ])
-    _, report = validate(ex, PAGES)
-    assert report.kept_contacts == []
 
 
 def test_a_paraphrase_is_demoted_rather_than_binned():

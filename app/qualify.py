@@ -244,19 +244,48 @@ def assess(profile: dict, sender: SenderProfile) -> Verdict:
 
 
 def route(profile: dict, has_email: bool) -> tuple[str, str | None]:
-    """How to approach, which overrides whether to.
+    """The recommended way in. Advice, not a gate.
 
-    Order matters. A published form beats a found address: if a fund
-    tells you how it wants to be approached, that is the answer.
+    An operator-supplied address always makes email possible; this says
+    whether it is the best move. Generation drafts regardless and shows
+    the recommendation alongside, so it can be overridden per target.
     """
-    application_url = profile.get("application_url")
-    if application_url:
-        return "form", str(application_url)
+    app = profile.get("application") or {}
+    url = app.get("url") or profile.get("application_url")
+    status = (app.get("status") or "unknown").lower()
+
+    if status == "closed":
+        when = app.get("deadline")
+        return "hold", (
+            f"applications are closed{f', reopening {when}' if when else ''}"
+        )
     if profile.get("accepts_cold") is False:
         return "intro", "site states it does not accept unsolicited approaches"
+    if url:
+        how = app.get("how_to_apply")
+        return "form", f"{url}" + (f" — {how}" if how else "")
     if has_email:
         return "email", None
     return "intro", "no published address and no application form"
+
+
+def email_advice(profile: dict, has_email: bool) -> tuple[bool, str]:
+    """Is email the right move here, and why.
+
+    Returns a recommendation and a plain reason. The operator decides;
+    this only makes sure they are deciding with the form, the deadline
+    and any stated policy in front of them.
+    """
+    channel, note = route(profile, has_email)
+    if not has_email:
+        return False, "no address on file; add one with `cohandle contact`"
+    if channel == "hold":
+        return False, note or "applications are closed"
+    if channel == "intro":
+        return False, note or "a warm introduction would land better"
+    if channel == "form":
+        return False, f"they publish a route in: {note}"
+    return True, "no published form or stated policy; email is the way in"
 
 
 def qualify_campaign(campaign_name: str, only: list[str] | None = None) -> list[tuple[str, Verdict, str]]:

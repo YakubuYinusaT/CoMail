@@ -95,7 +95,7 @@ class Target(Base, Timestamped):
 
     __table_args__ = (
         _enum("kind", "vc", "grant", "accelerator", "angel", "oem", "disco", "other"),
-        _enum("channel", "email", "form", "intro", "blocked"),
+        _enum("channel", "email", "form", "intro", "hold", "blocked"),
         Index("ix_target_enriched_at", "enriched_at"),
     )
 
@@ -115,6 +115,10 @@ class Contact(Base, Timestamped):
     # Where the address was published. Required when there is an address:
     # we do not hold contact details we cannot account for.
     source_url: Mapped[str | None] = mapped_column(Text)
+    # False means the model read it off a page and nobody has checked it
+    # reaches a person. True means the operator put it there or signed
+    # it off. Extraction cannot set this.
+    verified: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     target: Mapped[Target] = relationship(back_populates="contacts")
 
