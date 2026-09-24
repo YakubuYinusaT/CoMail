@@ -21,8 +21,11 @@ from sqlalchemy import func, select
 from app import auth
 from app.config import settings
 from app.db import session
+from app.ingest import ingest
+from app.intake import board, counts
 from app.models import Assessment, Campaign, Contact, Draft, DraftFact, Fact, Page, Target
 from app.qualify import email_advice
+from app.worker import ENRICH, GENERATE, enqueue
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -204,6 +207,95 @@ def draft_save(
 
     return RedirectResponse("/" if action != "save" else f"/draft/{draft_id}",
                             status_code=303)
+
+
+KINDS = ["vc", "grant", "accelerator", "angel", "oem", "disco", "other"]
+
+
+def _intake_context(request: Request, result=None) -> dict:
+    rows = board()
+    with session() as s:
+        campaign = _campaign(s)
+    return {
+        "nav": "intake", "rows": rows, "counts": counts(rows),
+        "kinds": KINDS, "result": result,
+        "campaign": campaign.name if campaign else None,
+    }
+
+
+@router.get("/intake", response_class=HTMLResponse)
+def intake_page(request: Request):
+    return templates.TemplateResponse(request, "intake.html",
+                                      _intake_context(request))
+
+
+@router.get("/intake/board", response_class=HTMLResponse)
+def intake_board(request: Request):
+    """The table on its own, for the page to poll while work is running."""
+    return templates.TemplateResponse(request, "_board.html",
+                                      _intake_context(request))
+
+
+@router.post("/intake", response_class=HTMLResponse)
+def intake_submit(request: Request, blob: str = Form(""), kind: str = Form("vc")):
+    """Paste in, targets out, crawling started.
+
+    Safe to submit twice: ingest keys on domain, enqueue refuses a second
+    job for a domain already in flight, and anything already read is left
+    alone rather than crawled again.
+    """
+    if kind not in KINDS:
+        kind = "vc"
+    outcome = ingest(blob, kind=kind)
+
+    started, already_read = [], []
+    with session() as s:
+        for domain in outcome.created + outcome.existing:
+            target = s.scalar(select(Target).where(Target.domain == domain))
+            if target is not None and target.enriched_at is not None:
+                already_read.append(domain)
+            elif enqueue(ENRICH, domain=domain):
+                started.append(domain)
+
+    result = {
+        "created": outcome.created, "existing": outcome.existing,
+        "contacts": outcome.contacts_added, "rejected": outcome.rejected,
+        "started": started, "already_read": already_read,
+    }
+    return templates.TemplateResponse(request, "intake.html",
+                                      _intake_context(request, result))
+
+
+@router.post("/intake/contact")
+def intake_contact(domain: str = Form(...), email: str = Form("")):
+    """Attach an address you found, from the intake screen.
+
+    Typed by a person, so it is verified by definition — the same rule the
+    review queue uses. Cohandle never puts an address here itself.
+    """
+    address = email.strip().lower()
+    if address:
+        with session() as s:
+            target = s.scalar(select(Target).where(Target.domain == domain))
+            if target is not None:
+                existing = s.scalar(select(Contact).where(
+                    Contact.target_id == target.id, Contact.email == address))
+                if existing is None:
+                    s.add(Contact(target_id=target.id, email=address,
+                                  verified=True, source_url="operator:intake"))
+                else:
+                    existing.verified = True
+    return RedirectResponse("/intake", status_code=303)
+
+
+@router.post("/intake/draft")
+def intake_draft(domain: str = Form(...)):
+    """The step intake deliberately does not take by itself."""
+    with session() as s:
+        campaign = _campaign(s)
+    if campaign is not None:
+        enqueue(GENERATE, domain=domain, campaign=campaign.name)
+    return RedirectResponse("/intake", status_code=303)
 
 
 @router.get("/targets", response_class=HTMLResponse)

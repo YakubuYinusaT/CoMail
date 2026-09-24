@@ -108,6 +108,17 @@ h1 { font-size: var(--t-xl); font-weight: 600; margin: 0 0 var(--s1);
 /* ----------------------------------------------------------------- tables */
 .scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 table { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
+td.num, th.num { text-align: right; }
+select { background: var(--bg); color: var(--fg); font: inherit;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 7px var(--s2); }
+select:focus { border-color: var(--focus); outline: none; }
+/* Work is happening on the server; this says so without claiming to know
+   how far along it is, which the server cannot tell us either. */
+.spin { display: inline-block; width: 9px; height: 9px; margin-left: 6px;
+  border: 2px solid var(--line-strong); border-top-color: var(--red);
+  border-radius: 50%; animation: spin 700ms linear infinite;
+  vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 thead th {
   background: var(--surface); text-align: left; font-size: var(--t-xs); font-weight: 600; letter-spacing: .08em;
   text-transform: uppercase; color: var(--fg-faint);
@@ -240,6 +251,7 @@ dialog td { padding: 5px 0; border: 0; }
   {% if nav != 'login' %}
   <nav>
     <a href="/" class="{{ 'on' if nav == 'queue' }}">Queue</a>
+    <a href="/intake" class="{{ 'on' if nav == 'intake' }}">Add</a>
     <a href="/targets" class="{{ 'on' if nav == 'targets' }}">Targets</a>
     <a href="/apply" class="{{ 'on' if nav == 'apply' }}">Apply &amp; intro</a>
   </nav>
@@ -307,6 +319,35 @@ dialog td { padding: 5px 0; border: 0; }
     r.onclick = function () { location.href = r.dataset.href; };
     r.onmouseenter = function () { at = i; };
   });
+
+  // Intake refresh. Only while something is actually running, only while
+  // the tab is visible, and it stops as soon as the board says it is idle
+  // so an open tab does not poll Cloud Run all afternoon.
+  (function () {
+    var board = document.getElementById("board");
+    if (!board || board.dataset.busy !== "1") return;
+    var timer = setInterval(function () {
+      if (document.hidden) return;
+      fetch("/intake/board", { headers: { "x-requested-with": "fetch" } })
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (html) {
+          if (!html) return;
+          var holder = document.createElement("div");
+          holder.innerHTML = html;
+          var fresh = holder.querySelector("#board");
+          var current = document.getElementById("board");
+          if (!fresh || !current) return;
+          current.replaceWith(fresh);
+          if (fresh.dataset.busy !== "1") {
+            clearInterval(timer);
+            // Counts in the heading are now stale, so show the settled
+            // state rather than a half-updated page.
+            location.reload();
+          }
+        })
+        .catch(function () {});
+    }, 3000);
+  })();
 
   document.addEventListener("keydown", function (ev) {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Add targets — Cohandle{% endblock %}
+{% block body %}
+<h1>Add targets</h1>
+<p class="lede">Paste sites or addresses, one per line. Cohandle crawls each
+  one and reads it, then stops. Nothing is written to anybody until you
+  look at what it found and press Draft.</p>
+
+<form method="post" action="/intake">
+  <label class="field">
+    <span>Sites or email addresses</span>
+    <textarea name="blob" style="min-height:120px"
+      placeholder="https://www.somefund.com&#10;hello@anotherfund.com&#10;thirdfund.vc"></textarea>
+  </label>
+  <div class="actionbar" style="align-items:center">
+    <label style="display:flex;align-items:center;gap:var(--s2);font-size:var(--t-md)">
+      <span class="faint" style="text-transform:uppercase;letter-spacing:.08em;
+                                 font-size:var(--t-xs);font-weight:600">Kind</span>
+      <select name="kind">
+        {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="primary" type="submit">Add and start reading</button>
+  </div>
+</form>
+
+{% if result %}
+<div class="note {{ 'ok' if result.started or result.created }}">
+  <div>
+    {% if result.started %}
+      <strong>Started on {{ result.started|length }}.</strong>
+      <span class="mono">{{ result.started|join(', ') }}</span>
+    {% else %}
+      <strong>Nothing new started.</strong>
+    {% endif %}
+    {% if result.already_read %}
+      <div style="margin-top:var(--s2)">Already read, left alone:
+        <span class="mono">{{ result.already_read|join(', ') }}</span></div>
+    {% endif %}
+    {% if result.contacts %}
+      <div style="margin-top:var(--s2)">Addresses kept:
+        <span class="mono">{{ result.contacts|join(', ') }}</span></div>
+    {% endif %}
+    {% if result.rejected %}
+      <div style="margin-top:var(--s2)">Not understood, so not guessed at:
+        {# A paste of prose splits into one rejection per word, which is
+           accurate and unreadable. Show enough to spot the mistake. #}
+        {% for raw, why in result.rejected[:6] %}
+          <div class="mute" style="font-size:var(--t-md)">
+            <span class="mono">{{ raw }}</span> — {{ why }}</div>
+        {% endfor %}
+        {% if result.rejected|length > 6 %}
+          <div class="faint" style="font-size:var(--t-md)">
+            and {{ result.rejected|length - 6 }} more</div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<p class="eyebrow" style="margin-top:var(--s6)">
+  Progress
+  {% if counts.busy %}· <span class="mute">{{ counts.busy }} working</span>{% endif %}
+  {% if counts.ready %}· <span class="mute">{{ counts.ready }} ready for you</span>{% endif %}
+  {% if counts.failed %}· <span class="mute">{{ counts.failed }} stuck</span>{% endif %}
+  {% if campaign %}· <span class="faint">drafts go to {{ campaign }}</span>{% endif %}
+</p>
+
+{% include "_board.html" %}
+{% endblock %}

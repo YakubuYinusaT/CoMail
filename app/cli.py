@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 
 from sqlalchemy import func, select
@@ -327,6 +328,50 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_work(args: argparse.Namespace) -> int:
+    """Drain the intake queue in a process that stays up.
+
+    The API drains the same queue while it is serving, which covers
+    someone sitting on the intake page waiting. This is for the other
+    case: a long batch you started and walked away from.
+    """
+    from app import worker
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    async def run() -> None:
+        stop = asyncio.Event()
+        if args.once:
+            while await worker.run_one():
+                pass
+            return
+        await worker.loop(stop)
+
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        print("stopped")
+    return 0
+
+
+def cmd_queue(args: argparse.Namespace) -> int:
+    """What the job table is holding."""
+    from app.models import Job
+
+    with session() as s:
+        rows = s.scalars(select(Job).order_by(Job.created_at.desc()).limit(args.limit)).all()
+        if not rows:
+            print("queue empty")
+            return 0
+        for j in rows:
+            domain = j.payload.get("domain", "")
+            line = f"  {j.state:8} {j.kind:9} {domain:30} attempts={j.attempts}"
+            print(line)
+            if j.error:
+                print(f"           {j.error}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cohandle")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -392,6 +437,15 @@ def main(argv: list[str] | None = None) -> int:
     p_apply = sub.add_parser("apply", help="worklist for form and intro targets")
     p_apply.add_argument("-v", "--verbose", action="store_true", help="include observations")
     p_apply.set_defaults(func=cmd_apply)
+
+    p_work = sub.add_parser("work", help="run the intake queue")
+    p_work.add_argument("--once", action="store_true",
+                        help="drain what is queued now, then exit")
+    p_work.set_defaults(func=cmd_work)
+
+    p_queue = sub.add_parser("queue", help="show the job queue")
+    p_queue.add_argument("--limit", type=int, default=20)
+    p_queue.set_defaults(func=cmd_queue)
 
     p_status = sub.add_parser("status", help="what is in the database")
     p_status.add_argument("--limit", type=int, default=25)

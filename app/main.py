@@ -7,6 +7,7 @@ described in the build spec hangs off this.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -14,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app import auth
+from app import auth, worker
 from app.config import settings
 from app.db import engine
 
@@ -37,8 +38,21 @@ async def lifespan(app: FastAPI):
     else:
         log.warning("login is OFF (APP_PASSWORD is unset). Correct behind "
                     "Identity-Aware Proxy, wrong on a public URL.")
-    yield
-    engine().dispose()
+    # The intake queue is drained in this process. On Cloud Run that means
+    # work continues while the intake page is polling, which is exactly
+    # when someone is waiting for it. For a long unattended batch, run
+    # `python -m app.cli work` somewhere that stays up.
+    stop = asyncio.Event()
+    runner = asyncio.create_task(worker.loop(stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        try:
+            await asyncio.wait_for(runner, timeout=10)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            runner.cancel()
+        engine().dispose()
 
 
 app = FastAPI(title="Cohandle", lifespan=lifespan)

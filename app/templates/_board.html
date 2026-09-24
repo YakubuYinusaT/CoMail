@@ -1,0 +1,56 @@
+{#- The intake table on its own, so the page can poll it. -#}
+<div id="board" data-busy="{{ 1 if counts.busy else 0 }}">
+{% if not rows %}
+  <div class="empty">Nothing here yet. Paste a few sites above.</div>
+{% else %}
+  <table>
+    <thead>
+      <tr><th>Target</th><th>Stage</th><th class="num">Pages</th>
+          <th class="num">Facts</th><th class="num">Fit</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>
+          <strong>{{ r.name }}</strong>
+          <span class="mono faint" style="display:block;font-size:var(--t-xs)">{{ r.domain }}</span>
+        </td>
+        <td>
+          <span class="tag {{ 'bad' if r.stage == 'failed'
+                              else 'good' if r.stage in ('ready', 'drafted')
+                              else 'warn' if r.stage == 'stalled' else 'plain' }}">
+            {{ r.label }}</span>
+          {% if r.stage in ('queued', 'working', 'drafting') %}<span class="spin"></span>{% endif %}
+          {% if r.detail %}
+            <span class="mute" style="display:block;font-size:var(--t-xs);margin-top:4px">{{ r.detail }}</span>
+          {% endif %}
+        </td>
+        <td class="num mono">{{ r.pages or '—' }}</td>
+        <td class="num mono">{{ r.facts or '—' }}</td>
+        <td class="num mono">{{ r.score if r.score is not none else '—' }}</td>
+        <td class="num">
+          {% if r.draft_id %}
+            <a href="/draft/{{ r.draft_id }}">Open draft</a>
+          {% elif r.can_draft %}
+            <form method="post" action="/intake/draft" style="margin:0;display:inline">
+              <input type="hidden" name="domain" value="{{ r.domain }}">
+              <button type="submit">Draft</button>
+            </form>
+          {% elif r.stage == 'needs_email' %}
+            {# Cohandle will not invent an address. This is where yours goes. #}
+            <form method="post" action="/intake/contact"
+                  style="margin:0;display:flex;gap:var(--s2);justify-content:flex-end">
+              <input type="hidden" name="domain" value="{{ r.domain }}">
+              <input type="text" name="email" inputmode="email"
+                     placeholder="address you found"
+                     style="width:200px;padding:6px var(--s2);font-size:var(--t-sm)">
+              <button type="submit">Add</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+</div>
