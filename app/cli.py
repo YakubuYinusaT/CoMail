@@ -19,6 +19,7 @@ from app.crawl import crawl_many
 from app.extract import build_prompt, extract_target, load_pages
 from app.db import session
 from app.ingest import ingest
+from app.generate import generate_campaign
 from app.qualify import qualify_campaign
 from app.models import Campaign, Contact, Page, Target
 
@@ -161,6 +162,37 @@ def cmd_qualify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_generate(args: argparse.Namespace) -> int:
+    try:
+        report = generate_campaign(args.campaign, only=args.domains or None,
+                                   model=args.model, max_retries=args.retries)
+    except RuntimeError as exc:
+        print(exc)
+        return 2
+    except LookupError as exc:
+        print(exc)
+        return 2
+
+    if not report.written and not report.skipped:
+        print("no targets to draft for: generation needs targets that are "
+              "enriched and routed to email.\n"
+              "run extract, then qualify, then this.")
+        return 0
+
+    for domain in report.written:
+        worst = report.worst.get(domain, 0.0)
+        mark = "  <-- still similar" if domain in report.still_similar else ""
+        print(f"  drafted   {domain:32} sameness {worst:.2f}{mark}")
+    for domain, why in report.skipped:
+        print(f"  skipped   {domain:32} {why}")
+    if report.regenerated:
+        print(f"\nregenerated {len(report.regenerated)}: {', '.join(report.regenerated)}")
+    if report.still_similar:
+        print(f"still too similar after retries: {', '.join(report.still_similar)}")
+    print(f"\n{len(report.written)} drafted, {len(report.skipped)} skipped")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     with session() as s:
         targets = s.scalar(select(func.count()).select_from(Target)) or 0
@@ -228,6 +260,14 @@ def main(argv: list[str] | None = None) -> int:
     p_qualify.add_argument("domains", nargs="*")
     p_qualify.add_argument("-v", "--verbose", action="store_true", help="per-criterion breakdown")
     p_qualify.set_defaults(func=cmd_qualify)
+
+    p_generate = sub.add_parser("generate", help="draft emails for qualified targets")
+    p_generate.add_argument("campaign")
+    p_generate.add_argument("domains", nargs="*")
+    p_generate.add_argument("--model", default="claude-sonnet-5")
+    p_generate.add_argument("--retries", type=int, default=2,
+                            help="regeneration attempts for drafts that read alike")
+    p_generate.set_defaults(func=cmd_generate)
 
     p_status = sub.add_parser("status", help="what is in the database")
     p_status.add_argument("--limit", type=int, default=25)
