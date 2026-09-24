@@ -60,22 +60,47 @@ Neon compute waking from suspend would otherwise read as a failed deploy.
 `/readyz` does query, and is the one to call when you want to know the
 database is genuinely reachable.
 
-**The poller is a scheduler job, not a background process.** Cloud Run
-scales to zero, so a long-lived polling loop would just be shut down.
-Scheduler waking the endpoint costs nothing while idle.
+**The poller is a scheduler job, not a background process.** Scheduler
+waking the endpoint costs nothing while idle.
+
+**The intake worker is a background process, and that is why the API is
+pinned warm.** `--min-instances=1` on its own would not be enough: Cloud
+Run throttles CPU to near zero the moment a request finishes, so the
+queue would only move while somebody had the intake page open in a tab.
+`--no-cpu-throttling` is the flag that actually buys background
+execution. Both are set on the API. The renderer stays at zero, because
+it only ever works inside a request.
 
 **`--timeout=900`** gives a batch enrichment request the full 15 minutes
 Cloud Run allows. Anything longer has to become a queue.
 
 ## Cost
 
-Within the Cloud Run free tier at this volume: 2 million requests, 360,000
-GB-seconds and 180,000 vCPU-seconds a month. A raise batch is a few
-thousand requests. Cloud Scheduler allows three free jobs and this uses
-one. Artifact Registry storage for two images is pennies.
+Requests and the renderer sit inside the Cloud Run free tier at this
+volume. Cloud Scheduler allows three free jobs and this uses one.
+Artifact Registry storage for two images is pennies.
 
-The thing that would actually cost money is `--min-instances=1` to kill
-cold starts. Leave it at 0 until a cold start genuinely annoys someone.
+The API no longer does. An instance held warm with CPU always allocated
+is billed for every second it exists rather than only while it serves, so
+one 1-vCPU, 1-GiB instance is a real monthly line item in the region of
+forty to sixty dollars at list prices. Check the pricing calculator for
+europe-west3 before assuming a figure; that range is an estimate, not a
+quote.
+
+**There is a second bill, and it is the one people miss.** A worker that
+polls keeps Neon's compute from ever auto-suspending. Neon charges by
+compute-hour, and an endpoint that never sleeps is roughly 730 of them a
+month against a free-plan allowance far below that. Idle polling
+therefore backs off from two seconds to sixty, and `enqueue()` wakes the
+loop directly so the backoff costs nothing in responsiveness. That cuts
+the query volume by well over an order of magnitude, but it does not make
+the compute suspend: anything that polls at all keeps it awake.
+
+If that bill is unwelcome, the cheaper shape is to put min-instances back
+to 0 and have Cloud Scheduler call a drain endpoint every few minutes,
+the same pattern the reply poller already uses. Unattended batches then
+run on a schedule instead of continuously, and both Cloud Run and Neon go
+back to sleep between them.
 
 ## Local
 

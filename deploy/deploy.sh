@@ -70,6 +70,11 @@ NOTE
 api() {
   gcloud builds submit --tag "${IMAGE_BASE}/api:latest" .
 
+  # min-instances=1 with no-cpu-throttling, together, are what keep the
+  # intake worker running. Warm on its own is not enough: Cloud Run
+  # throttles CPU to near zero as soon as a request finishes, so the
+  # queue would only move while someone had the intake page open.
+  # This bills for an always-on instance. See CLOUDRUN.md.
   gcloud run deploy cohandle-api \
     --image="${IMAGE_BASE}/api:latest" \
     --region="${REGION}" \
@@ -77,7 +82,8 @@ api() {
     --allow-unauthenticated \
     --port=8080 \
     --cpu=1 --memory=1Gi \
-    --min-instances=0 \
+    --min-instances=1 \
+    --no-cpu-throttling \
     --max-instances=4 \
     --concurrency=20 \
     --timeout=900 \

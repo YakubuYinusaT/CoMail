@@ -56,7 +56,34 @@ MAX_ATTEMPTS = 3
 # died mid-crawl. Cloud Run can take an instance away at any point, so
 # this is the ordinary case, not an exceptional one.
 STALE_AFTER = timedelta(minutes=15)
-IDLE_SLEEP = 3.0
+
+# Idle polling backs off rather than hammering the database every few
+# seconds forever. It matters more than it looks: a query every three
+# seconds means Neon's compute never auto-suspends, and on Cloud Run with
+# an always-on instance that is 24 hours a day of compute time bought to
+# discover an empty table. Backing off does not cost responsiveness,
+# because enqueue() wakes this loop directly.
+IDLE_MIN = 2.0
+IDLE_MAX = 60.0
+
+_wake: asyncio.Event | None = None
+_wake_loop: asyncio.AbstractEventLoop | None = None
+
+
+def nudge() -> None:
+    """Wake the worker in this process now, rather than at the next poll.
+
+    Only reaches the local loop. Another instance picks the job up on its
+    own backoff, within a minute at worst, which is why the backoff is
+    capped rather than unbounded.
+    """
+    if _wake is None or _wake_loop is None:
+        return
+    try:
+        _wake_loop.call_soon_threadsafe(_wake.set)
+    except RuntimeError:
+        # The loop has closed, which happens during shutdown.
+        pass
 
 
 def _now() -> datetime:
@@ -89,6 +116,7 @@ def enqueue(kind: str, **payload) -> bool:
 
     with session() as s:
         s.add(Job(kind=kind, payload=payload, state="pending"))
+    nudge()
     return True
 
 
@@ -223,17 +251,43 @@ async def run_one() -> bool:
 
 async def loop(stop: asyncio.Event) -> None:
     """Drain the queue until asked to stop."""
+    global _wake, _wake_loop
+    _wake = asyncio.Event()
+    _wake_loop = asyncio.get_running_loop()
+
     reclaim_stale()
+    delay = IDLE_MIN
     while not stop.is_set():
         try:
             did_work = await run_one()
         except Exception:  # noqa: BLE001 - a claim failure must not kill the loop
             log.exception("worker loop error")
             did_work = False
+
         if did_work:
+            delay = IDLE_MIN
             continue
-        reclaim_stale()
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=IDLE_SLEEP)
-        except asyncio.TimeoutError:
-            pass
+
+        # Only sweep for abandoned jobs once the backoff has stretched
+        # out. Doing it on every idle pass was a second query per poll for
+        # something that can only become true after fifteen minutes.
+        if delay >= IDLE_MAX:
+            reclaim_stale()
+
+        await _sleep_or_wake(stop, delay)
+        delay = min(delay * 2, IDLE_MAX)
+
+    _wake = _wake_loop = None
+
+
+async def _sleep_or_wake(stop: asyncio.Event, delay: float) -> None:
+    """Wait out the backoff, unless something is queued or we are stopping."""
+    assert _wake is not None
+    waiters = [asyncio.create_task(stop.wait()), asyncio.create_task(_wake.wait())]
+    try:
+        await asyncio.wait(waiters, timeout=delay,
+                           return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in waiters:
+            task.cancel()
+        _wake.clear()
