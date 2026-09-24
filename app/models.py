@@ -209,6 +209,7 @@ class Draft(Base, Timestamped):
             "recent_cluster",
             "publication",
             "fund_event",
+            "none",
         ),
         _enum(
             "status",

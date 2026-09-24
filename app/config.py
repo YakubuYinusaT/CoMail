@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     render_service_url: str = Field(default="", alias="RENDER_SERVICE_URL")
     render_timeout_ms: int = Field(default=20000, alias="RENDER_TIMEOUT_MS")
 
+    # Provider is swappable; see app/llm.py. Keys for both may sit here,
+    # only the selected one is required.
+    llm_provider: str = Field(default="anthropic", alias="LLM_PROVIDER")
+    llm_model: str = Field(default="", alias="LLM_MODEL")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
     zoho_client_id: str = Field(default="", alias="ZOHO_CLIENT_ID")
     zoho_client_secret: str = Field(default="", alias="ZOHO_CLIENT_SECRET")

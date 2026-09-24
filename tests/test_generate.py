@@ -1,17 +1,20 @@
-"""Hook selection and the sameness gate.
+"""Evidence ranking, prompt assembly and the sameness gate.
 
-Both run without an API key. Hook selection is where the "no invented
-warmth" rule is enforced, and the gate is the only thing that will
-notice forty emails converging on one sentence.
+All three run without an API key.
+
+Ranking offers every usable opening and lets the model choose; the tests
+here check that it offers rather than decides, and that the prompt
+carries the one rule that is not negotiable — no specific claim about a
+recipient without a fact behind it.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from app.generate import NoHook, choose_hook, validate_used_facts, GeneratedEmail
+from app.generate import GeneratedEmail, build_prompt, gather_evidence, validate_used_facts
 from app.qualify import SenderProfile
 from app.sameness import compare_batch, similarity
 
@@ -24,7 +27,7 @@ SENDER = SenderProfile(
 
 @dataclass
 class FakeFact:
-    """Stands in for a Fact row. Only the fields hook selection reads."""
+    """Stands in for a Fact row. Only the fields ranking reads."""
 
     kind: str
     claim: str
@@ -40,81 +43,96 @@ class FakeFact:
             self.id = uuid.uuid4()
 
 
-# ------------------------------------------------------------ hook selection
+# --------------------------------------------------------- evidence ranking
 
-def test_portfolio_in_our_sector_wins_as_the_opening():
+def test_portfolio_in_our_sector_ranks_first():
     facts = [
         FakeFact("portfolio", "Backed Kola Energy, a Lagos off-grid metering company."),
         FakeFact("thesis", "States it invests in African founders."),
     ]
-    hook = choose_hook(facts, {"thesis_quote": "invests in African founders"}, SENDER)
-    assert hook.kind == "portfolio_adjacent"
-    assert "energy" in hook.rationale
+    ev = gather_evidence(facts, {"thesis_quote": "invests in African founders"}, SENDER)
+    assert ev.kind == "portfolio_adjacent"
+    assert "energy" in ev.best.rationale
 
 
-def test_an_unrelated_portfolio_company_does_not_count_as_adjacent():
-    """'You backed a company' is true and worthless. It must fall through
-    to a hook that actually says something."""
+def test_an_unrelated_portfolio_company_is_not_offered_as_adjacent():
+    """'You backed a company' is true and worthless."""
     facts = [
         FakeFact("portfolio", "Backed Foldy, a stationery marketplace."),
         FakeFact("thesis", "States it invests in African founders."),
     ]
-    hook = choose_hook(facts, {"thesis_quote": "invests in African founders"}, SENDER)
-    assert hook.kind == "thesis_quote"
+    ev = gather_evidence(facts, {"thesis_quote": "invests in African founders"}, SENDER)
+    assert ev.kind == "thesis_quote"
+    assert "portfolio_adjacent" not in [h.kind for h in ev.hooks]
 
 
-def test_thesis_hook_needs_both_a_quote_and_a_fact():
-    """The quote is what gets put in quotation marks, so it has to exist."""
-    facts = [FakeFact("thesis", "States it backs infrastructure.")]
-
-    # A thesis fact with no verbatim quote to go with it cannot open an
-    # email, because the opening would be a paraphrase in quotation marks.
-    assert isinstance(choose_hook(facts, {}, SENDER), NoHook)
-
-    # With the quote present, the same fact carries the hook.
-    hook = choose_hook(facts, {"thesis_quote": "backs infrastructure"}, SENDER)
-    assert hook.kind == "thesis_quote"
-
-
-def test_two_deals_make_a_cluster():
+def test_every_usable_opening_is_offered_not_just_the_best():
+    """The model chooses. Handing it one option is the hardcoding we do
+    not want."""
     facts = [
-        FakeFact("deal", "Invested in Solstice in March 2026."),
-        FakeFact("deal", "Invested in Gridline in May 2026."),
+        FakeFact("portfolio", "Backed Kola Energy, an off-grid metering company."),
+        FakeFact("thesis", "States it backs energy access."),
+        FakeFact("deal", "Invested in Solstice."),
+        FakeFact("deal", "Announced a $30m second close in July 2026."),
+        FakeFact("publication", "Wrote about metering gaps in West Africa."),
     ]
-    hook = choose_hook(facts, {}, SENDER)
-    assert hook.kind == "recent_cluster"
-    assert len(hook.facts) == 2
+    ev = gather_evidence(facts, {"thesis_quote": "backs energy access"}, SENDER)
+    kinds = [h.kind for h in ev.hooks]
+    assert "portfolio_adjacent" in kinds
+    assert "thesis_quote" in kinds
+    assert "recent_cluster" in kinds
+    assert "publication" in kinds
+    assert "fund_event" in kinds
+    assert kinds[0] == "portfolio_adjacent"
 
 
-def test_a_single_deal_becomes_a_fund_event_only_if_it_reads_like_one():
-    event = [FakeFact("deal", "Announced a $30m second close in July 2026.")]
-    assert choose_hook(event, {}, SENDER).kind == "fund_event"
-
-    plain = [FakeFact("deal", "Invested in Solstice.")]
-    assert isinstance(choose_hook(plain, {}, SENDER), NoHook)
-
-
-def test_publication_is_used_when_nothing_stronger_exists():
-    facts = [FakeFact("publication", "Wrote about metering gaps in West Africa.")]
-    assert choose_hook(facts, {}, SENDER).kind == "publication"
+def test_no_facts_still_produces_a_draftable_state():
+    """A thin website is not a refusal. The email goes, without claims."""
+    ev = gather_evidence([], {}, SENDER)
+    assert ev.hooks == []
+    assert ev.kind == "none"
+    assert ev.quotable == []
 
 
-def test_no_facts_means_no_draft():
-    """The rule the whole design rests on: nothing true to say means say
-    nothing, not something warm and invented."""
-    hook = choose_hook([], {}, SENDER)
-    assert isinstance(hook, NoHook)
-    assert "no verified facts" in hook.reason
-
-
-def test_inferred_facts_cannot_carry_an_opening():
-    """Inferred facts inform scoring. They are never quoted."""
+def test_inferred_facts_are_not_quotable_and_carry_no_opening():
     facts = [
         FakeFact("portfolio", "Probably backs energy companies.", confidence="inferred"),
         FakeFact("thesis", "Seems to like infrastructure.", confidence="inferred"),
     ]
-    hook = choose_hook(facts, {"thesis_quote": "likes infrastructure"}, SENDER)
-    assert isinstance(hook, NoHook)
+    ev = gather_evidence(facts, {"thesis_quote": "likes infrastructure"}, SENDER)
+    assert ev.hooks == []
+    assert ev.quotable == []
+
+
+def test_prompt_without_facts_forbids_specifics_explicitly():
+    """The instruction has to be in the prompt, not just in our heads."""
+
+    class T:
+        name, domain, profile = "Thin Fund", "thin.vc", {}
+
+    class C:
+        sender_profile = {}
+
+    prompt = build_prompt(T(), gather_evidence([], {}, SENDER), SENDER, C())
+    assert "NO VERIFIED FACTS" in prompt
+    assert "No portfolio names" in prompt
+
+
+def test_prompt_with_facts_lists_ids_and_sources():
+    facts = [FakeFact("portfolio", "Backed Kola Energy, a metering company.")]
+
+    class T:
+        name, domain = "Good Fund", "good.vc"
+        profile = {}
+
+    class C:
+        sender_profile = {}
+
+    ev = gather_evidence(facts, {}, SENDER)
+    prompt = build_prompt(T(), ev, SENDER, C())
+    assert str(facts[0].id) in prompt
+    assert facts[0].source_url in prompt
+    assert "suggestions, strongest first" in prompt
 
 
 def test_invented_fact_ids_are_discarded():

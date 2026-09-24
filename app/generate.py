@@ -1,17 +1,24 @@
 """Generation.
 
-Not a template with a name swapped in. The opening is chosen by what the
-research actually found, which is why the drafts come out structurally
-different rather than only lexically different.
+Ranks the evidence, hands it to the model, and lets the model decide how
+to open. The ranking is a suggestion, not a gate.
 
-Three stages: pick the hook, compose from it, then measure the batch
-against itself and regenerate anything that reads as a variant.
+Two things this deliberately does not do.
 
-The rule that shapes everything: if no verified fact supports any hook,
-the target is flagged for manual research and no draft is written. A warm
-opening built on nothing is worse than a plain one, and it is exactly
-what a model produces when asked to be warm about a fund it knows
-nothing about.
+It does not refuse to write when there are no verified facts. A fund with
+a thin website still deserves an email; it gets one that opens on the
+problem instead of on them. What the absence of facts removes is the
+right to *claim* anything specific — no portfolio names, no quotes, no
+"you backed X". The email still goes.
+
+It does not force an opening. A named portfolio company is one way to
+show the research was done, not a tax on every message. Forcing it
+produces forty emails that all begin "You backed...", which is the exact
+sameness the gate exists to catch.
+
+What stays hard: any statement about the recipient must trace to a
+verified fact. That rule is enforced in the prompt and checked against
+the fact ids afterwards.
 """
 
 from __future__ import annotations
@@ -26,22 +33,15 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db import session
+from app.llm import ProviderNotConfigured, complete
 from app.models import Campaign, Contact, Draft, DraftFact, Fact, Target
 from app.qualify import SenderProfile, _parse_when
 from app.sameness import compare_batch
 from app.taxonomy import canonical_sector, normalise_all
 
-HookType = Literal[
-    "portfolio_adjacent", "thesis_quote", "recent_cluster", "publication", "fund_event"
-]
-
-# Order is priority: the first hook whose evidence exists wins.
-HOOK_ORDER: list[HookType] = [
-    "portfolio_adjacent",
-    "thesis_quote",
-    "recent_cluster",
-    "publication",
-    "fund_event",
+HookKind = Literal[
+    "portfolio_adjacent", "thesis_quote", "recent_cluster",
+    "publication", "fund_event", "none",
 ]
 
 FUND_EVENT_RE = re.compile(
@@ -53,88 +53,89 @@ FUND_EVENT_RE = re.compile(
 
 @dataclass
 class Hook:
-    kind: HookType
+    kind: HookKind
     facts: list[Fact]
     rationale: str
 
 
 @dataclass
-class NoHook:
-    reason: str
+class Evidence:
+    """What is available to open on. Empty is a valid state."""
+
+    hooks: list[Hook] = field(default_factory=list)
+    quotable: list[Fact] = field(default_factory=list)
+    thesis_quote: str | None = None
+
+    @property
+    def best(self) -> Hook | None:
+        return self.hooks[0] if self.hooks else None
+
+    @property
+    def kind(self) -> HookKind:
+        return self.hooks[0].kind if self.hooks else "none"
 
 
-# --------------------------------------------------------------------------
-# stage 1: choose the hook
-# --------------------------------------------------------------------------
-
-def _quotable(facts: list[Fact]) -> list[Fact]:
-    """Inferred facts may inform scoring. They are never quoted."""
-    return [f for f in facts if f.confidence == "verified"]
-
-
-def choose_hook(
+def gather_evidence(
     facts: list[Fact], profile: dict, sender: SenderProfile
-) -> Hook | NoHook:
-    """First hook with real evidence behind it, in priority order."""
-    usable = _quotable(facts)
+) -> Evidence:
+    """Rank every usable opening. Does not choose, and never refuses.
+
+    Inferred facts are excluded from `quotable` because they are not safe
+    to state. They still informed qualification, which is where they
+    belong.
+    """
+    quotable = [f for f in facts if f.confidence == "verified"]
     by_kind: dict[str, list[Fact]] = {}
-    for fact in usable:
+    for fact in quotable:
         by_kind.setdefault(fact.kind, []).append(fact)
 
     ours = normalise_all(sender.sectors, canonical_sector)
+    hooks: list[Hook] = []
 
-    for kind in HOOK_ORDER:
-        if kind == "portfolio_adjacent":
-            # A portfolio company only counts as adjacent when its own
-            # description lands in a sector we work in. Otherwise the
-            # opening is "you backed a company" — true, and worthless.
-            hits = [
-                f for f in by_kind.get("portfolio", [])
-                if canonical_sector(f.claim) in ours
-            ]
-            if hits:
-                shared = canonical_sector(hits[0].claim)
-                return Hook(kind, hits[:2], f"portfolio overlap in {shared}")
+    adjacent = [
+        f for f in by_kind.get("portfolio", [])
+        if canonical_sector(f.claim) in ours
+    ]
+    if adjacent:
+        shared = canonical_sector(adjacent[0].claim)
+        hooks.append(Hook("portfolio_adjacent", adjacent[:2],
+                          f"portfolio overlap in {shared}"))
 
-        elif kind == "thesis_quote":
-            # The quote was checked verbatim against page text during
-            # extraction, so if it survived it is safe to put in marks.
-            if profile.get("thesis_quote") and by_kind.get("thesis"):
-                return Hook(kind, by_kind["thesis"][:1], "verbatim thesis statement")
+    thesis_quote = profile.get("thesis_quote")
+    if thesis_quote and by_kind.get("thesis"):
+        hooks.append(Hook("thesis_quote", by_kind["thesis"][:1],
+                          "verbatim thesis statement"))
 
-        elif kind == "recent_cluster":
-            recent = [
-                f for f in by_kind.get("deal", [])
-                if (w := _parse_when(str(f.observed_at.date()))) is not None
-                and datetime.now(timezone.utc) - w <= timedelta(days=365)
-            ]
-            if len(by_kind.get("deal", [])) >= 2:
-                return Hook(kind, (recent or by_kind["deal"])[:3],
-                            f"{len(by_kind['deal'])} recent deals on record")
+    deals = by_kind.get("deal", [])
+    if len(deals) >= 2:
+        recent = [
+            f for f in deals
+            if (w := _parse_when(str(f.observed_at.date()))) is not None
+            and datetime.now(timezone.utc) - w <= timedelta(days=365)
+        ]
+        hooks.append(Hook("recent_cluster", (recent or deals)[:3],
+                          f"{len(deals)} deals on record"))
 
-        elif kind == "publication":
-            if by_kind.get("publication"):
-                return Hook(kind, by_kind["publication"][:1], "something they wrote or said")
+    if by_kind.get("publication"):
+        hooks.append(Hook("publication", by_kind["publication"][:1],
+                          "something they wrote or said"))
 
-        elif kind == "fund_event":
-            hits = [f for f in by_kind.get("deal", []) if FUND_EVENT_RE.search(f.claim)]
-            if hits:
-                return Hook(kind, hits[:1], "a fund close or launch")
+    events = [f for f in deals if FUND_EVENT_RE.search(f.claim)]
+    if events:
+        hooks.append(Hook("fund_event", events[:1], "a fund close or launch"))
 
-    if not usable:
-        return NoHook("no verified facts; only inferred or none at all")
-    kinds = ", ".join(sorted(by_kind)) or "none"
-    return NoHook(f"no fact supports an opening (have: {kinds})")
+    return Evidence(hooks=hooks, quotable=quotable, thesis_quote=thesis_quote)
 
 
 # --------------------------------------------------------------------------
-# stage 2: compose
+# composition
 # --------------------------------------------------------------------------
 
 class GeneratedEmail(BaseModel):
     subject: str = Field(max_length=120)
     body: str = Field(max_length=2400)
     used_fact_ids: list[str] = Field(default_factory=list)
+    opened_on: str = Field(default="", max_length=200)
 
     @field_validator("subject", "body")
     @classmethod
@@ -147,140 +148,130 @@ class GeneratedEmail(BaseModel):
 SYSTEM_PROMPT = """\
 You write one cold email from a founder to an investor.
 
-You are given facts about the recipient, each with the URL it came from,
-and a hook telling you which one to open on. You may state nothing about
-the recipient that is not in those facts. If you find yourself wanting to
-add context you happen to know, stop: that is the failure this whole
-system exists to prevent.
+The single hard rule: every statement you make *about the recipient* must
+come from the supplied facts. Nothing you happen to know about them, and
+nothing inferred from their name or their sector. If a fact is not in the
+list, you do not know it.
 
-Structure, in this order:
+Everything else is your judgement.
 
-1. Open on what they have done — one or two sentences from the hook
-   facts, in your own words. Not flattery. No "I've long admired".
-2. The bridge: what the sender is building and why it connects to that
-   specific thing.
-3. One or two verifiable numbers about the market or the sender.
-4. The ask.
+You are given ranked openings. They are suggestions in order of strength,
+not instructions. Use one if it genuinely earns the opening. Ignore them
+all and open another way if that reads better. A named portfolio company
+shows the research was done, but it is not required, and forty emails
+that all begin "You backed..." are worse than none of them doing it.
 
-Vary these deliberately between emails, because forty of these go out in
-the same week and they must not read as one letter with the names
-changed:
+When the facts are thin or absent, that is workable, not a failure. Write
+the email without specific claims about them: open on the problem, the
+market, or what the sender is building. Do not manufacture familiarity to
+fill the gap. An honest general email beats an invented specific one.
 
-- length, anywhere from 120 to 220 words
-- the middle as prose, or as two or three bullets
-- whether the number leads or follows the bridge
-- closing on a question or a direct ask
-- a subject line drawn from the hook, never a fixed pattern
+Shape:
+- open in a way that earns the next sentence
+- the bridge: what the sender is building and why it reaches this reader
+- a verifiable number or two
+- the ask
+
+Vary deliberately across a batch — length between 120 and 220 words,
+prose or bullets in the middle, number leading or following, closing on a
+question or a direct ask, subject line never a fixed pattern.
 
 Never write: an em dash, "I hope this finds you well", "reaching out",
-"circling back", "synergy", "excited to", or the recipient's own
-marketing adjectives back at them.
+"circling back", "synergy", "excited to", or their own marketing
+adjectives back at them. No signature; it is appended afterwards.
 
-Do not write a signature or sign-off. That is appended afterwards.
-
-Return the fact ids you actually used.
+Return the fact ids you used, and one short line in `opened_on` naming
+how you chose to open.
 """
 
 
-def build_prompt(target: Target, hook: Hook, sender: SenderProfile, campaign: Campaign) -> str:
-    lines = [
-        f"RECIPIENT: {target.name or target.domain} ({target.domain})",
-        "",
-        f"HOOK: {hook.kind} — {hook.rationale}",
-        "Open on the hook facts below, which are marked [HOOK].",
-        "",
-        "FACTS YOU MAY USE (nothing else about the recipient is permitted):",
-    ]
-    hook_ids = {str(f.id) for f in hook.facts}
-    for fact in _quotable_for_prompt(target, hook):
-        mark = "[HOOK] " if str(fact.id) in hook_ids else "       "
-        lines.append(f"{mark}id={fact.id} ({fact.kind}) {fact.claim}   <{fact.source_url}>")
+def build_prompt(
+    target: Target, evidence: Evidence, sender: SenderProfile, campaign: Campaign
+) -> str:
+    lines = [f"RECIPIENT: {target.name or target.domain} ({target.domain})", ""]
 
-    profile = target.profile or {}
-    if profile.get("thesis_quote"):
-        lines += ["", f'THEIR OWN WORDS (verbatim, safe to quote): "{profile["thesis_quote"]}"']
+    if evidence.hooks:
+        lines.append("RANKED OPENINGS (suggestions, strongest first):")
+        for i, hook in enumerate(evidence.hooks, 1):
+            lines.append(f"  {i}. {hook.kind} — {hook.rationale}")
+        lines.append("")
+    else:
+        lines += [
+            "NO VERIFIED FACTS ABOUT THIS RECIPIENT.",
+            "Write the email anyway, with no specific claims about them. "
+            "No portfolio names, no quotes, nothing about what they have "
+            "backed. Open on the problem or the market instead.",
+            "",
+        ]
 
+    if evidence.quotable:
+        lines.append("FACTS YOU MAY STATE (nothing else about them is permitted):")
+        for fact in evidence.quotable[:14]:
+            lines.append(
+                f"  id={fact.id} ({fact.kind}) {fact.claim}   <{fact.source_url}>"
+            )
+        lines.append("")
+
+    if evidence.thesis_quote:
+        lines += [f'THEIR OWN WORDS (verbatim, safe to quote): "{evidence.thesis_quote}"', ""]
+
+    profile = campaign.sender_profile or {}
     lines += [
-        "",
         "SENDER:",
         f"  stage: {sender.stage}",
         f"  sectors: {', '.join(sender.sectors)}",
         f"  geography: {sender.geography}",
-        f"  raising: ${sender.raise_target_usd:,}" if sender.raise_target_usd else "",
-        "",
-        "SENDER CONTEXT (true, use what helps):",
-        (campaign.sender_profile or {}).get("pitch", "").strip(),
     ]
-    return "\n".join(l for l in lines if l is not None)
+    if sender.raise_target_usd:
+        lines.append(f"  raising: ${sender.raise_target_usd:,}")
+    if profile.get("pitch"):
+        lines += ["", "SENDER CONTEXT (true, use what helps):", profile["pitch"].strip()]
 
-
-def _quotable_for_prompt(target: Target, hook: Hook) -> list[Fact]:
-    ordered = list(hook.facts)
-    for fact in target.facts:
-        if fact.confidence == "verified" and fact not in ordered:
-            ordered.append(fact)
-    return ordered[:12]
-
-
-def _client():
-    cfg = settings()
-    if not cfg.anthropic_api_key:
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Generation needs it; hook selection "
-            "and the sameness gate do not."
-        )
-    import instructor
-    from anthropic import Anthropic
-
-    return instructor.from_anthropic(Anthropic(api_key=cfg.anthropic_api_key))
+    return "\n".join(lines)
 
 
 def compose(
-    target: Target, hook: Hook, sender: SenderProfile, campaign: Campaign,
-    model: str = "claude-sonnet-5", nudge: str = "",
+    target: Target, evidence: Evidence, sender: SenderProfile, campaign: Campaign,
+    model: str | None = None, nudge: str = "",
 ) -> GeneratedEmail:
-    prompt = build_prompt(target, hook, sender, campaign)
+    prompt = build_prompt(target, evidence, sender, campaign)
     if nudge:
         prompt += f"\n\nADDITIONAL INSTRUCTION: {nudge}"
-    return _client().messages.create(
-        model=model,
-        max_tokens=1500,
+    return complete(
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        user=prompt,
         response_model=GeneratedEmail,
+        max_tokens=1500,
+        model=model,
     )
 
 
+def validate_used_facts(email: GeneratedEmail, allowed: list[Fact]) -> list[Fact]:
+    """Keep only ids that were offered. An invented id is discarded."""
+    by_id = {str(f.id): f for f in allowed}
+    return [by_id[i] for i in email.used_fact_ids if i in by_id]
+
+
 # --------------------------------------------------------------------------
-# stage 3: the batch gate
+# batch
 # --------------------------------------------------------------------------
 
 @dataclass
 class GenerationReport:
     written: list[str] = field(default_factory=list)
-    skipped: list[tuple[str, str]] = field(default_factory=list)
+    without_facts: list[str] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)
     regenerated: list[str] = field(default_factory=list)
     still_similar: list[str] = field(default_factory=list)
     worst: dict[str, float] = field(default_factory=dict)
 
 
-def validate_used_facts(email: GeneratedEmail, allowed: list[Fact]) -> list[Fact]:
-    """Keep only the facts that exist and were offered.
-
-    Same posture as extraction: an id the model invented is discarded
-    rather than chased.
-    """
-    by_id = {str(f.id): f for f in allowed}
-    return [by_id[i] for i in email.used_fact_ids if i in by_id]
-
-
 def generate_campaign(
     campaign_name: str,
     only: list[str] | None = None,
-    model: str = "claude-sonnet-5",
+    model: str | None = None,
     max_retries: int = 2,
 ) -> GenerationReport:
-    """Draft for every qualified, email-routed target, then gate the batch."""
     report = GenerationReport()
     cfg = settings()
 
@@ -297,16 +288,23 @@ def generate_campaign(
             stmt = stmt.where(Target.domain.in_(only))
         targets = list(s.scalars(stmt))
 
-        drafted: dict[str, tuple[Draft, Hook]] = {}
+        drafted: dict[str, tuple[Draft, Evidence]] = {}
         for target in targets:
-            hook = choose_hook(list(target.facts), target.profile or {}, sender)
-            if isinstance(hook, NoHook):
-                # The rule that stops a warm opening about nothing.
-                report.skipped.append((target.domain, hook.reason))
+            evidence = gather_evidence(list(target.facts), target.profile or {}, sender)
+            if not evidence.hooks:
+                # Noted, not skipped. The email is written without
+                # specific claims.
+                report.without_facts.append(target.domain)
+
+            try:
+                email = compose(target, evidence, sender, campaign, model=model)
+            except ProviderNotConfigured:
+                raise
+            except Exception as exc:
+                report.failed.append((target.domain, f"{type(exc).__name__}: {exc}"))
                 continue
 
-            email = compose(target, hook, sender, campaign, model=model)
-            used = validate_used_facts(email, _quotable_for_prompt(target, hook))
+            used = validate_used_facts(email, evidence.quotable)
 
             contact = s.scalar(
                 select(Contact).where(
@@ -322,7 +320,7 @@ def generate_campaign(
                 draft = Draft(target_id=target.id, campaign_id=campaign.id)
                 s.add(draft)
             draft.contact_id = contact.id if contact else None
-            draft.hook_type = hook.kind
+            draft.hook_type = evidence.kind
             draft.subject = email.subject
             draft.body = email.body
             draft.status = "generated"
@@ -334,14 +332,16 @@ def generate_campaign(
             for fact in used:
                 s.add(DraftFact(draft_id=draft.id, fact_id=fact.id))
 
-            drafted[target.domain] = (draft, hook)
+            drafted[target.domain] = (draft, evidence)
             report.written.append(target.domain)
 
-        # The gate. Only meaningful across a batch, which is why it runs
-        # here rather than per draft.
         for attempt in range(max_retries + 1):
-            bodies = {d: draft.body for d, (draft, _) in drafted.items()}
-            batch = compare_batch(bodies, threshold=cfg.sameness_threshold)
+            if not drafted:
+                break
+            batch = compare_batch(
+                {d: draft.body for d, (draft, _) in drafted.items()},
+                threshold=cfg.sameness_threshold,
+            )
             report.worst = batch.worst
             flagged = batch.flagged
             if not flagged or attempt == max_retries:
@@ -349,17 +349,22 @@ def generate_campaign(
                 break
 
             for domain in flagged:
-                draft, hook = drafted[domain]
+                draft, evidence = drafted[domain]
                 target = s.get(Target, draft.target_id)
-                email = compose(
-                    target, hook, sender, campaign, model=model,
-                    nudge=(
-                        "Your previous draft read too much like the others in this "
-                        "batch. Change the structure, not just the words: move the "
-                        "number, change the length, switch prose and bullets, and "
-                        "open on a different sentence."
-                    ),
-                )
+                try:
+                    email = compose(
+                        target, evidence, sender, campaign, model=model,
+                        nudge=(
+                            "Your previous draft read too much like the others in "
+                            "this batch. Change the structure, not just the words: "
+                            "move the number, change the length, switch between "
+                            "prose and bullets, and open a different way. If you "
+                            "opened on a portfolio company, do not this time."
+                        ),
+                    )
+                except Exception as exc:
+                    report.failed.append((domain, f"regenerate: {exc}"))
+                    continue
                 draft.subject = email.subject
                 draft.body = email.body
                 if domain not in report.regenerated:

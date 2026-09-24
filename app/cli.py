@@ -173,23 +173,34 @@ def cmd_generate(args: argparse.Namespace) -> int:
         print(exc)
         return 2
 
-    if not report.written and not report.skipped:
+    if not report.written and not report.failed:
         print("no targets to draft for: generation needs targets that are "
               "enriched and routed to email.\n"
               "run extract, then qualify, then this.")
         return 0
 
+    thin = set(report.without_facts)
     for domain in report.written:
         worst = report.worst.get(domain, 0.0)
-        mark = "  <-- still similar" if domain in report.still_similar else ""
-        print(f"  drafted   {domain:32} sameness {worst:.2f}{mark}")
-    for domain, why in report.skipped:
-        print(f"  skipped   {domain:32} {why}")
+        marks = []
+        if domain in thin:
+            marks.append("no verified facts, written without specifics")
+        if domain in report.still_similar:
+            marks.append("still similar")
+        suffix = f"   ({'; '.join(marks)})" if marks else ""
+        print(f"  drafted   {domain:32} sameness {worst:.2f}{suffix}")
+
+    for domain, why in report.failed:
+        print(f"  failed    {domain:32} {why}")
+
     if report.regenerated:
         print(f"\nregenerated {len(report.regenerated)}: {', '.join(report.regenerated)}")
     if report.still_similar:
-        print(f"still too similar after retries: {', '.join(report.still_similar)}")
-    print(f"\n{len(report.written)} drafted, {len(report.skipped)} skipped")
+        print(f"still too similar after {args.retries} retries: "
+              f"{', '.join(report.still_similar)}")
+    print(f"\n{len(report.written)} drafted "
+          f"({len(report.without_facts)} without verified facts), "
+          f"{len(report.failed)} failed")
     return 0
 
 

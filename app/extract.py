@@ -23,8 +23,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
-from app.config import settings
 from app.db import session
+from app.llm import complete
 from app.models import Contact, Fact, Page, Target
 
 FactKind = Literal["portfolio", "thesis", "deal", "publication", "person", "cheque_size"]
@@ -222,32 +222,18 @@ def build_prompt(domain: str, pages: dict[str, str]) -> str:
 # the call
 # --------------------------------------------------------------------------
 
-def _client():
-    """Built lazily so the module imports without a key.
+def call_model(domain: str, pages: dict[str, str], model: str | None = None) -> Extraction:
+    """One call, structured output, validated by pydantic before return.
 
-    Everything above this line is testable offline; only this needs
-    credentials.
+    Provider-agnostic: see app/llm.py. Everything above this line is
+    testable offline; only this needs credentials.
     """
-    cfg = settings()
-    if not cfg.anthropic_api_key:
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Extraction needs it; crawling and "
-            "qualification do not."
-        )
-    import instructor
-    from anthropic import Anthropic
-
-    return instructor.from_anthropic(Anthropic(api_key=cfg.anthropic_api_key))
-
-
-def call_model(domain: str, pages: dict[str, str], model: str = "claude-sonnet-5") -> Extraction:
-    """One call, structured output, validated by pydantic before return."""
-    return _client().messages.create(
-        model=model,
-        max_tokens=4096,
+    return complete(
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_prompt(domain, pages)}],
+        user=build_prompt(domain, pages),
         response_model=Extraction,
+        max_tokens=4096,
+        model=model,
     )
 
 
@@ -319,7 +305,7 @@ def store(domain: str, profile: ExtractedProfile, report: ValidationReport) -> N
         target.enriched_at = now
 
 
-def extract_target(domain: str, model: str = "claude-sonnet-5") -> ValidationReport:
+def extract_target(domain: str, model: str | None = None) -> ValidationReport:
     """Crawled pages in, validated facts in the database out."""
     pages = load_pages(domain)
     if not pages:
