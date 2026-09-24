@@ -1,0 +1,34 @@
+# Page renderer. One job: fetch a URL with a real browser and return the
+# HTML after JavaScript has run.
+#
+# Deployed as its own Cloud Run service and called only when the plain
+# fetch in the main service comes back with nothing usable. Keeping it
+# separate means the main service stays small and the browser image is
+# pulled only when a site actually needs it.
+#
+# Base image ships Chromium and its system libraries already installed,
+# which is the difference between a working Playwright container and an
+# afternoon of chasing missing .so files.
+
+FROM mcr.microsoft.com/playwright/python:v1.56.0-noble
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+COPY requirements-render.txt ./
+RUN pip install -r requirements-render.txt
+
+COPY app/render_service.py ./app/render_service.py
+
+# The Playwright base image already has a non-root 'pwuser'.
+RUN chown -R pwuser:pwuser /app
+USER pwuser
+
+ENV PORT=8080
+EXPOSE 8080
+
+CMD exec uvicorn app.render_service:app --host 0.0.0.0 --port ${PORT} --timeout-graceful-shutdown 8

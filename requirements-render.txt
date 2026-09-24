@@ -1,0 +1,5 @@
+# Renderer service only. Playwright itself comes with the base image;
+# listing it here keeps the Python binding version explicit.
+fastapi
+uvicorn[standard]
+playwright

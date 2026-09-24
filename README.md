@@ -1,0 +1,75 @@
+# Cohandle
+
+Internal tool for personalised outreach at volume.
+
+Give it a list of websites or email addresses. It researches each target,
+rejects the ones that do not fit, drafts a different email for each of the
+rest, and sends them from the Connected Intelligence Zoho mailbox on a
+throttle, so replies land in the normal inbox and the conversation carries
+on there.
+
+Built first for the Connected Intelligence raise. Designed to generalise to
+OEM, DisCo and partner outreach without rework.
+
+## How it works
+
+```
+Paste URLs or emails
+  → enrich    crawl, extract facts with sources
+  → qualify   score fit, reject with a reason, route to email / form / intro
+  → generate  choose a hook from what the research found, compose
+  → gate      reject drafts too similar to the rest of the batch
+  → review    a person approves or edits every message
+  → send      Zoho Mail API, scheduled under a daily cap
+  → stop      a reply halts all further contact with that target
+```
+
+Two rules the code enforces rather than trusts:
+
+**No claim about a recipient without a source.** Every personalised
+sentence traces to a `fact` row with a URL. If enrichment finds nothing
+specific enough to open with, the target is flagged for manual research
+rather than given a generated pleasantry.
+
+**Nothing sends without a human approving it.**
+
+## Stack
+
+| | |
+|---|---|
+| API and review queue | FastAPI, Jinja, HTMX |
+| Extraction | httpx and trafilatura, with a Chromium renderer for JS-heavy sites |
+| Database | Lakebase Postgres on Neon, Frankfurt |
+| LLM | Provider SDK behind `instructor`, so outputs validate or raise |
+| Hosting | Google Cloud Run, three pieces |
+| Mail | Zoho Mail API as the real mailbox, not a sending service |
+
+## Running it
+
+Deployment, secrets and the reasoning behind the infrastructure choices
+are in [`deploy/CLOUDRUN.md`](deploy/CLOUDRUN.md).
+
+Locally:
+
+```bash
+cp .env.example .env     # fill it in
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8080
+curl localhost:8080/readyz
+```
+
+`/readyz` returning the Postgres version means the Neon connection works.
+
+## State
+
+The deployment and the Neon wiring are done and verified. The pipeline
+above is not written yet: `app/main.py` is health checks and a stubbed
+poller endpoint. Infrastructure came first so there is somewhere to put
+the logic, and so the database and mail paths are proven before anything
+depends on them.
+
+## Spec
+
+The full build spec — data model, Zoho OAuth flow, enrichment and
+qualification logic, hook selection, the anti-sameness gate, and the v0
+task breakdown — lives in the Cohandle build spec document.

@@ -1,0 +1,36 @@
+# Top-level dependencies, deliberately unpinned.
+#
+# Pin them for real after the first green build:
+#     docker build -t cohandle . && \
+#     docker run --rm cohandle pip freeze > requirements.lock.txt
+# then switch the Dockerfile to install from the lock file. Writing
+# invented version numbers here would only produce a build that fails
+# on a version that never existed.
+
+# web
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+
+# http and extraction
+httpx
+trafilatura
+selectolax
+
+# database
+sqlalchemy
+alembic
+psycopg[binary,pool]
+
+# config and validation
+pydantic
+pydantic-settings
+
+# llm with a validated output contract; swap the provider client to suit
+instructor
+anthropic
+
+# generation support
+rapidfuzz
+tenacity
