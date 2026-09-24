@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Cohandle{% endblock %}
+{% block body %}
+<div style="max-width:380px;margin:12vh auto 0">
+  <h1 style="margin-bottom:var(--s2)">Sign in</h1>
+  <p class="lede" style="margin-bottom:var(--s5)">One shared password for the team.
+    Nothing here is public.</p>
+
+  {% if error %}
+    <div class="note" style="border-left-color:var(--bad);margin-bottom:var(--s4)">
+      <div>{{ error }}</div>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field">
+      <span>Password</span>
+      <input type="password" name="password" autocomplete="current-password"
+             autofocus required>
+    </label>
+    <div class="actionbar">
+      <button class="primary" type="submit">Sign in</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

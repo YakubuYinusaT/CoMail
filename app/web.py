@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 
+from app import auth
 from app.config import settings
 from app.db import session
 from app.models import Assessment, Campaign, Contact, Draft, DraftFact, Fact, Page, Target
@@ -25,6 +26,65 @@ from app.qualify import email_advice
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# Every page's header asks whether to show a sign-out button. Passing it
+# through four route handlers would be four chances to forget.
+templates.env.globals["auth_on"] = auth.enabled
+
+
+def _safe_next(raw: str) -> str:
+    """Only ever redirect inside this app.
+
+    `next` arrives in a query string, so it is attacker-controlled. A
+    value like `//evil.example` is a protocol-relative URL the browser
+    would happily follow off-site.
+    """
+    if raw.startswith("/") and not raw.startswith("//"):
+        return raw
+    return "/"
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, next: str = "/"):
+    if not auth.enabled() or auth.valid(request.cookies.get(auth.COOKIE)):
+        return RedirectResponse(_safe_next(next), status_code=303)
+    return templates.TemplateResponse(
+        request, "login.html", {"nav": "login", "next": _safe_next(next)})
+
+
+@router.post("/login")
+def login_submit(request: Request, password: str = Form(""), next: str = Form("/")):
+    destination = _safe_next(next)
+    if not auth.enabled():
+        return RedirectResponse(destination, status_code=303)
+
+    ip = auth.client_ip(request)
+    wait = auth.locked_out(ip)
+    if wait:
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"nav": "login", "next": destination,
+             "error": f"Too many attempts. Try again in {wait} seconds."},
+            status_code=429)
+
+    if not auth.check_password(password):
+        auth.note_failure(ip)
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"nav": "login", "next": destination, "error": "That password is wrong."},
+            status_code=401)
+
+    auth.clear_failures(ip)
+    response = RedirectResponse(destination, status_code=303)
+    auth.set_cookie(response, request)
+    return response
+
+
+@router.post("/logout")
+def logout():
+    response = RedirectResponse("/login", status_code=303)
+    auth.clear_cookie(response)
+    return response
 
 
 def _campaign(s):

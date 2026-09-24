@@ -33,6 +33,8 @@ KNOWN = {
     "ZOHO_ACCOUNT_ID": "Zoho account id, from the accounts API",
     "ZOHO_FROM_ADDRESS": "the mailbox that sends",
     "INTERNAL_TOKEN": "shared secret between the API and the poller",
+    "APP_PASSWORD": "shared password for the review queue; empty disables login",
+    "SESSION_SECRET": "cookie signing key; empty derives it from APP_PASSWORD",
 }
 NOT_SECRET = {"LLM_PROVIDER", "LLM_MODEL", "ZOHO_FROM_ADDRESS"}
 

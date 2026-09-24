@@ -60,6 +60,21 @@ curl localhost:8080/readyz
 
 `/readyz` returning the Postgres version means the Neon connection works.
 
+### Who gets in
+
+Set `APP_PASSWORD` and the whole app sits behind one shared password and a
+signed session cookie, good for 14 days. Leave it unset and there is no
+login at all, which is what you want on localhost and what you want behind
+Identity-Aware Proxy, and what you must not do on a public URL. Either way
+the choice is written to the log at boot.
+
+```bash
+python scripts/setkey.py APP_PASSWORD
+```
+
+Signing out drops the cookie in that browser. To end every session
+everywhere, change the password: the signing key is derived from it.
+
 ## State
 
 The deployment and the Neon wiring are done and verified. The pipeline

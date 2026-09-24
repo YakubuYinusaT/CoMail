@@ -7,14 +7,19 @@ described in the build spec hangs off this.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app import auth
 from app.config import settings
 from app.db import engine
+
+log = logging.getLogger("cohandle")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,11 +29,23 @@ async def lifespan(app: FastAPI):
     # users.
     if not settings().database_url:
         raise RuntimeError("DATABASE_URL is not set; refusing to start")
+    # Say which door is open. An unauthenticated deploy should be a
+    # decision someone made, not something nobody noticed in the logs.
+    if auth.enabled():
+        log.info("login is on: shared password, %d day sessions",
+                 settings().session_max_age_days)
+    else:
+        log.warning("login is OFF (APP_PASSWORD is unset). Correct behind "
+                    "Identity-Aware Proxy, wrong on a public URL.")
     yield
     engine().dispose()
 
 
 app = FastAPI(title="Cohandle", lifespan=lifespan)
+
+# Registered before the routes below so it wraps every one of them,
+# including /static and the review queue.
+app.middleware("http")(auth.gate)
 
 # The review queue. Mounted last so /healthz and /readyz keep their
 # meaning for Cloud Run's probes.

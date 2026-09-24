@@ -44,6 +44,15 @@ class Settings(BaseSettings):
 
     internal_token: str = Field(default="", alias="INTERNAL_TOKEN")
 
+    # Shared password for the review queue. Empty disables the login
+    # entirely: correct locally, and correct in production once Identity
+    # Aware Proxy is doing the checking instead. See app/auth.py.
+    app_password: str = Field(default="", alias="APP_PASSWORD")
+    # Optional. Left empty, the cookie signing key is derived from the
+    # password, so changing the password signs everyone out.
+    session_secret: str = Field(default="", alias="SESSION_SECRET")
+    session_max_age_days: int = Field(default=14, alias="SESSION_MAX_AGE_DAYS")
+
     # Sending discipline. Defaults are the build spec's; raising them is a
     # deliberate act, not a convenience.
     send_daily_cap: int = Field(default=30, alias="SEND_DAILY_CAP")

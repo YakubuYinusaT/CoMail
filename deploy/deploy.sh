@@ -41,7 +41,7 @@ setup() {
   # ever passes through this script, a shell history or a CI log.
   for name in cohandle-database-url cohandle-anthropic-key \
               cohandle-zoho-client-secret cohandle-zoho-refresh-token \
-              cohandle-internal-token; do
+              cohandle-internal-token cohandle-app-password; do
     gcloud secrets describe "${name}" >/dev/null 2>&1 \
       || gcloud secrets create "${name}" --replication-policy=automatic
     gcloud secrets add-iam-policy-binding "${name}" \
@@ -56,6 +56,14 @@ Secrets exist but are empty. Add each value yourself, for example:
   printf '%s' 'postgresql://...' | gcloud secrets versions add cohandle-database-url --data-file=-
 
 Do this from your own shell so the values never enter this repo.
+
+cohandle-app-password is the login for the review queue. An empty value
+means the service has no login at all, which is only correct when
+Identity-Aware Proxy is doing the checking instead. To set a long random
+one:
+
+  python -c "import secrets; print(secrets.token_urlsafe(18), end='')" \
+    | gcloud secrets versions add cohandle-app-password --data-file=-
 NOTE
 }
 
@@ -79,7 +87,8 @@ api() {
 ANTHROPIC_API_KEY=cohandle-anthropic-key:latest,\
 ZOHO_CLIENT_SECRET=cohandle-zoho-client-secret:latest,\
 ZOHO_REFRESH_TOKEN=cohandle-zoho-refresh-token:latest,\
-INTERNAL_TOKEN=cohandle-internal-token:latest"
+INTERNAL_TOKEN=cohandle-internal-token:latest,\
+APP_PASSWORD=cohandle-app-password:latest"
 }
 
 renderer() {

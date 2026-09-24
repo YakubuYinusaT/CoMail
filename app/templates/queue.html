@@ -6,7 +6,7 @@
   {% if pending %}<strong>{{ pending }}</strong> waiting on you{% else %}All reviewed{% endif %}
   {% if drafts %} · {{ drafts|length }} draft{{ '' if drafts|length == 1 else 's' }} total{% endif %}
   · nothing sends without your approval.
-  <span class="faint">Press <kbd>j</kbd> <kbd>k</kbd> to move, <kbd>enter</kbd> to open.</span>
+  <span class="faint keyhint">Press <kbd>j</kbd> <kbd>k</kbd> to move, <kbd>enter</kbd> to open.</span>
 </p>
 
 {% if not drafts %}
