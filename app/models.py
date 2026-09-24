@@ -309,3 +309,34 @@ class Job(Base, Timestamped):
         _enum("state", "pending", "running", "done", "failed"),
         Index("ix_job_claim", "state", "run_after"),
     )
+
+
+class Page(Base, Timestamped):
+    """A crawled page.
+
+    Kept as extracted text rather than raw HTML. The extractor reads
+    text, nothing downstream wants the markup, and storing it would grow
+    the database by an order of magnitude for no gain. `needs_render`
+    marks the pages a plain fetch could not get anything out of, which in
+    practice means a client-rendered site.
+    """
+
+    __tablename__ = "page"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("target.id", ondelete="CASCADE"), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="other")
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    text: Mapped[str | None] = mapped_column(Text)
+    text_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rendered: Mapped[bool] = mapped_column(nullable=False, default=False)
+    needs_render: Mapped[bool] = mapped_column(nullable=False, default=False)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        _enum("kind", "home", "about", "team", "portfolio", "thesis", "contact", "apply", "other"),
+        UniqueConstraint("target_id", "url", name="uq_page_target_url"),
+        Index("ix_page_target_kind", "target_id", "kind"),
+    )

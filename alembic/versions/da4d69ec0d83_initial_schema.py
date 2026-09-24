@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 97bb4876f65c
+Revision ID: da4d69ec0d83
 Revises: 
-Create Date: 2026-09-24 17:13:22.639812
+Create Date: 2026-09-24 17:20:26.280025
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '97bb4876f65c'
+revision: str = 'da4d69ec0d83'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -112,6 +112,26 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_fact_target_kind', 'fact', ['target_id', 'kind'], unique=False)
+    op.create_table('page',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('target_id', sa.UUID(), nullable=False),
+    sa.Column('url', sa.Text(), nullable=False),
+    sa.Column('kind', sa.String(length=16), nullable=False),
+    sa.Column('http_status', sa.Integer(), nullable=True),
+    sa.Column('text', sa.Text(), nullable=True),
+    sa.Column('text_chars', sa.Integer(), nullable=False),
+    sa.Column('rendered', sa.Boolean(), nullable=False),
+    sa.Column('needs_render', sa.Boolean(), nullable=False),
+    sa.Column('fetched_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('error', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.CheckConstraint("kind IN ('home', 'about', 'team', 'portfolio', 'thesis', 'contact', 'apply', 'other')", name='ck_kind'),
+    sa.ForeignKeyConstraint(['target_id'], ['target.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('target_id', 'url', name='uq_page_target_url')
+    )
+    op.create_index('ix_page_target_kind', 'page', ['target_id', 'kind'], unique=False)
     op.create_table('draft',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('target_id', sa.UUID(), nullable=False),
@@ -188,6 +208,8 @@ def downgrade() -> None:
     op.drop_table('draft_fact')
     op.drop_index('ix_draft_status', table_name='draft')
     op.drop_table('draft')
+    op.drop_index('ix_page_target_kind', table_name='page')
+    op.drop_table('page')
     op.drop_index('ix_fact_target_kind', table_name='fact')
     op.drop_table('fact')
     op.drop_index('ix_contact_target', table_name='contact')
