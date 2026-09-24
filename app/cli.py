@@ -19,7 +19,8 @@ from app.crawl import crawl_many
 from app.extract import build_prompt, extract_target, load_pages
 from app.db import session
 from app.ingest import ingest
-from app.models import Contact, Page, Target
+from app.qualify import qualify_campaign
+from app.models import Campaign, Contact, Page, Target
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
@@ -112,6 +113,54 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def cmd_campaign(args: argparse.Namespace) -> int:
+    import json
+    profile = json.loads(args.profile) if args.profile else {
+        "stage": "pre-seed",
+        "raise_target_usd": 250000,
+        "sectors": ["energy", "embedded finance", "climate", "infrastructure"],
+        "geography": "nigeria",
+        "competitors": ["Optasia"],
+    }
+    with session() as s:
+        existing = s.scalar(select(Campaign).where(Campaign.name == args.name))
+        if existing is None:
+            s.add(Campaign(name=args.name, sender_profile=profile))
+            print(f"created campaign {args.name!r}")
+        else:
+            existing.sender_profile = profile
+            print(f"updated campaign {args.name!r}")
+    for k, v in profile.items():
+        print(f"  {k:18} {v}")
+    return 0
+
+
+def cmd_qualify(args: argparse.Namespace) -> int:
+    try:
+        results = qualify_campaign(args.campaign, only=args.domains or None)
+    except LookupError as exc:
+        print(exc)
+        return 2
+    if not results:
+        print("nothing enriched yet to qualify")
+        return 0
+
+    order = {"qualified": 0, "needs_review": 1, "rejected": 2}
+    for domain, verdict, channel in sorted(results, key=lambda r: (order[r[1].verdict], -r[1].score)):
+        print(f"  {verdict.score:>3}  {verdict.verdict:<13} {channel:<6} {domain}")
+        if verdict.rejection_reason:
+            print(f"        {verdict.rejection_reason}")
+        if args.verbose:
+            for c in verdict.criteria:
+                print(f"          {c.name:<10} {c.points:>3}/{c.max_points:<3} {c.note}")
+
+    counts: dict[str, int] = {}
+    for _, v, _ in results:
+        counts[v.verdict] = counts.get(v.verdict, 0) + 1
+    print("\n" + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     with session() as s:
         targets = s.scalar(select(func.count()).select_from(Target)) or 0
@@ -168,6 +217,17 @@ def main(argv: list[str] | None = None) -> int:
                            help="print the prompt instead of calling the model")
     p_extract.add_argument("--chars", type=int, default=3000, help="with --show-prompt")
     p_extract.set_defaults(func=cmd_extract)
+
+    p_campaign = sub.add_parser("campaign", help="create or update a campaign's sender profile")
+    p_campaign.add_argument("name")
+    p_campaign.add_argument("--profile", help="JSON; omit for the Connected Intelligence default")
+    p_campaign.set_defaults(func=cmd_campaign)
+
+    p_qualify = sub.add_parser("qualify", help="score and route enriched targets")
+    p_qualify.add_argument("campaign")
+    p_qualify.add_argument("domains", nargs="*")
+    p_qualify.add_argument("-v", "--verbose", action="store_true", help="per-criterion breakdown")
+    p_qualify.set_defaults(func=cmd_qualify)
 
     p_status = sub.add_parser("status", help="what is in the database")
     p_status.add_argument("--limit", type=int, default=25)
