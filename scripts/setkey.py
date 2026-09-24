@@ -90,6 +90,23 @@ def main(argv: list[str]) -> int:
     if key in NOT_SECRET:
         value = input(f"{key}: ").strip()
     else:
+        # On some terminals getpass cannot suppress echo and silently
+        # falls back to a version that does not. Refuse rather than let a
+        # key appear on screen, where it can be scrolled back to, copied
+        # into a chat, or captured by a session recording.
+        import getpass as _gp
+
+        if _gp.getpass is _gp.fallback_getpass:
+            print(
+                "This terminal cannot hide typed input, so the key would be\n"
+                "echoed on screen. Not asking for it here.\n\n"
+                "Open .env in an editor and set the line directly:\n"
+                f"    {ENV}\n"
+                f"    {key}=<paste here>\n\n"
+                "The file is gitignored. Nothing else needs to change."
+            )
+            return 1
+
         value = getpass(f"{key} (input hidden, nothing is echoed): ").strip()
         confirm = getpass("again, to catch a typo: ").strip()
         if value != confirm:
