@@ -11,6 +11,13 @@ on there.
 Built first for the Connected Intelligence raise. Designed to generalise to
 OEM, DisCo and partner outreach without rework.
 
+## Screens
+
+`/` is Add: paste sites in, watch them get crawled and read. `/queue` is
+the review queue, `/targets` everything known, `/apply` the ones that
+want a form or an introduction. The front door is Add because that is
+where the work starts.
+
 ## How it works
 
 ```

@@ -96,7 +96,7 @@ def _campaign(s):
     return s.scalar(select(Campaign).order_by(Campaign.created_at.desc()))
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/queue", response_class=HTMLResponse)
 def queue(request: Request):
     rows = []
     with session() as s:
@@ -128,7 +128,7 @@ def draft_detail(request: Request, draft_id: str):
     with session() as s:
         d = s.get(Draft, draft_id)
         if d is None:
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse("/queue", status_code=303)
         t = s.get(Target, d.target_id)
         c = s.get(Contact, d.contact_id) if d.contact_id else None
         a = s.scalar(select(Assessment).where(
@@ -170,7 +170,7 @@ def draft_save(
     with session() as s:
         d = s.get(Draft, draft_id)
         if d is None:
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse("/queue", status_code=303)
 
         changed = d.subject != subject.strip() or d.body != body.strip()
         d.subject = subject.strip() or d.subject
@@ -206,7 +206,7 @@ def draft_save(
         elif action == "reject":
             d.status = "rejected"
 
-    return RedirectResponse("/" if action != "save" else f"/draft/{draft_id}",
+    return RedirectResponse("/queue" if action != "save" else f"/draft/{draft_id}",
                             status_code=303)
 
 
@@ -248,6 +248,8 @@ def quit_app(request: Request):
     return templates.TemplateResponse(request, "quit.html", {"nav": "quit"})
 
 
+# Intake is the front door: the first thing you do is add targets.
+@router.get("/", response_class=HTMLResponse)
 @router.get("/intake", response_class=HTMLResponse)
 def intake_page(request: Request):
     return templates.TemplateResponse(request, "intake.html",

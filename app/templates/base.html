@@ -256,7 +256,7 @@ dialog td { padding: 5px 0; border: 0; }
     {# Ordered by the work, not by what was built first: you add targets,
        then review what came back, then look at the rest. #}
     <a href="/intake" class="{{ 'on' if nav == 'intake' }}">Add</a>
-    <a href="/" class="{{ 'on' if nav == 'queue' }}">Queue</a>
+    <a href="/queue" class="{{ 'on' if nav == 'queue' }}">Queue</a>
     <a href="/targets" class="{{ 'on' if nav == 'targets' }}">Targets</a>
     <a href="/apply" class="{{ 'on' if nav == 'apply' }}">Apply &amp; intro</a>
   </nav>
@@ -372,7 +372,7 @@ dialog td { padding: 5px 0; border: 0; }
       case "j": ev.preventDefault(); select(at + 1); break;
       case "k": ev.preventDefault(); select(at - 1); break;
       case "Enter": if (at >= 0) location.href = rows[at].dataset.href; break;
-      case "u": if (document.getElementById("backlink")) location.href = "/"; break;
+      case "u": if (document.getElementById("backlink")) location.href = "/queue"; break;
       case "e": {
         var body = document.querySelector("textarea[name=body]");
         if (body) { ev.preventDefault(); body.focus(); }
