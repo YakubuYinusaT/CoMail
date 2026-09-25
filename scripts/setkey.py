@@ -35,8 +35,11 @@ KNOWN = {
     "INTERNAL_TOKEN": "shared secret between the API and the poller",
     "APP_PASSWORD": "shared password for the review queue; empty disables login",
     "SESSION_SECRET": "cookie signing key; empty derives it from APP_PASSWORD",
+    "SEND_ENABLED": "true or false; false means nothing ever leaves",
+    "ZOHO_API_BASE": "mail.zoho.com, .eu, .in or .com.au (not secret)",
 }
-NOT_SECRET = {"LLM_PROVIDER", "LLM_MODEL", "ZOHO_FROM_ADDRESS"}
+NOT_SECRET = {"LLM_PROVIDER", "LLM_MODEL", "ZOHO_FROM_ADDRESS",
+              "SEND_ENABLED", "ZOHO_API_BASE", "ZOHO_ACCOUNT_ID"}
 
 
 def ignored() -> bool:

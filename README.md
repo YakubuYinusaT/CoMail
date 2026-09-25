@@ -17,7 +17,25 @@ Nothing leaves until `SEND_ENABLED=true`. Credentials are not permission:
 with a working Zoho token and that flag false, Cohandle does every step
 up to the API call and records what it would have sent.
 
-Prove the credentials without putting anything in anybody's inbox:
+Set Zoho up in one sitting:
+
+```bash
+python scripts/zoho_setup.py
+```
+
+It asks for your region, your client id, your client secret and the code
+from Zoho's API console, trades the code for a refresh token, finds your
+account id for you and writes all of it into .env. Nothing is echoed and
+nothing is passed as an argument where a shell history would keep it.
+
+A note on plans. Zoho removed IMAP, POP and SMTP from new free accounts,
+and describes API access as depending on the plan. Whether the send API
+works on the free plan is something the setup script will tell you at the
+end, when it asks Zoho for your mailbox list. If that call is refused
+because of the plan, no amount of configuration gets around it and the
+answer is to move to Mail Lite or to send through something else.
+
+Prove the credentials again later without putting anything in an inbox:
 
 ```bash
 python -m app.cli zoho
