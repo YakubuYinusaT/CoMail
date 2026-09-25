@@ -80,13 +80,31 @@ def test_seconds_are_read_as_seconds():
     assert _when({"receivedTime": str(int(NOW.timestamp()))}) == NOW
 
 
-def test_the_first_usable_field_wins():
-    older = NOW - timedelta(days=1)
-    got = _when({"sentDateInGMT": ms(NOW), "receivedTime": ms(older)})
-    assert got == NOW
+def test_received_time_is_trusted_over_the_field_named_gmt():
+    """sentDateInGMT is not GMT, at least not on this account.
+
+    A test message whose own subject recorded 22:33:06 Lagos came back
+    with sentDateInGMT seven hours later, and receivedTime seven seconds
+    later, which is what actually happened. Trusting the obvious name
+    would have written every sent_at seven hours wrong, quietly.
+    """
+    truth = NOW
+    seven_hours_out = NOW + timedelta(hours=7)
+    got = _when({"sentDateInGMT": ms(seven_hours_out), "receivedTime": ms(truth)})
+    assert got == truth
+
+
+def test_the_gmt_field_is_still_better_than_nothing():
+    assert _when({"sentDateInGMT": ms(NOW)}) == NOW
 
 
 def test_a_missing_or_unreadable_time_is_not_a_crash():
     assert _when({}) is None
     assert _when({"sentDateInGMT": ""}) is None
     assert _when({"sentDateInGMT": "not a number"}) is None
+
+
+def test_an_html_escaped_header_still_yields_the_address():
+    """Zoho returns To headers escaped, entities and all."""
+    header = "&quot;Yinusa Yakubu&quot;&lt;yy@ciit.africa&gt;"
+    assert _addresses(header) == {"yy@ciit.africa"}

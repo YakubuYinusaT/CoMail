@@ -21,6 +21,7 @@ Nothing here writes to the mailbox. It reads headers and updates rows.
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 from dataclasses import dataclass, field
@@ -66,13 +67,30 @@ def _normalise(subject: str) -> str:
 
 
 def _addresses(header: str) -> set[str]:
-    """Every address in a To header, however Zoho formatted it."""
-    return {a.lower() for a in re.findall(r"[\w.+-]+@[\w.-]+\.\w+", header or "")}
+    """Every address in a To header, however Zoho formatted it.
+
+    Zoho returns these HTML escaped, so a header arrives looking like
+    &quot;Yinusa Yakubu&quot;&lt;yy@ciit.africa&gt;. Unescaped first so a
+    display name containing an entity cannot hide the address after it.
+    """
+    return {a.lower() for a in
+            re.findall(r"[\w.+-]+@[\w.-]+\.\w+", html.unescape(header or ""))}
 
 
 def _when(message: dict) -> datetime | None:
-    """Zoho reports times as epoch milliseconds, as a string."""
-    for key in ("sentDateInGMT", "receivedTime", "sentDate"):
+    """When the message went, as epoch milliseconds in a string.
+
+    receivedTime first, despite the obvious-looking name of the other
+    field. On this account sentDateInGMT is seven hours ahead of the
+    truth and is not GMT: a test message whose own subject recorded
+    22:33:06 Lagos came back as sentDateInGMT 05:33:13 Lagos the next
+    morning, while receivedTime gave 22:33:13, seven seconds after
+    composition, which is what actually happened.
+
+    Trusting the name would have written every sent_at seven hours wrong,
+    quietly, in a column nobody double checks.
+    """
+    for key in ("receivedTime", "sentDate", "sentDateInGMT"):
         raw = message.get(key)
         if raw in (None, ""):
             continue
