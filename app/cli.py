@@ -537,6 +537,20 @@ def cmd_sends(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reconcile(args: argparse.Namespace) -> int:
+    """Check the Sent folder and mark the drafts you actually sent."""
+    from app import reconcile
+
+    report = reconcile.run()
+    print(report)
+    for address in report.matched:
+        print(f"  sent     {address}")
+    for address in report.unmatched:
+        print(f"  waiting  {address}")
+    return 0
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cohandle")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -620,6 +634,10 @@ def main(argv: list[str] | None = None) -> int:
     p_test.add_argument("--to", default=None,
                         help="one of your own addresses; defaults to ZOHO_FROM_ADDRESS")
     p_test.set_defaults(func=cmd_testsend)
+
+    p_rec = sub.add_parser("reconcile",
+                           help="mark drafts that now appear in Sent")
+    p_rec.set_defaults(func=cmd_reconcile)
 
     p_sends = sub.add_parser("sends", help="delivery state")
     p_sends.add_argument("--limit", type=int, default=20)

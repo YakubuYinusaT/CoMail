@@ -159,6 +159,37 @@ def sweep_sends() -> int:
     return queued
 
 
+# Checking the Sent folder is a read against somebody else's server, so
+# it happens on a slow beat rather than on every idle pass. Ten minutes
+# is far quicker than a person would notice a draft going out.
+RECONCILE_EVERY = timedelta(minutes=10)
+_last_reconcile: datetime | None = None
+
+
+def sweep_reconcile() -> None:
+    """Mark drafts that have since been sent, occasionally.
+
+    Failures are swallowed on purpose. The common one is a token that
+    cannot read the mailbox, which is a setup step rather than a fault,
+    and it must not fill the log or stop the queue from running.
+    """
+    global _last_reconcile
+    now = _now()
+    if _last_reconcile is not None and now - _last_reconcile < RECONCILE_EVERY:
+        return
+    _last_reconcile = now
+
+    from app import reconcile
+
+    try:
+        report = reconcile.run()
+    except Exception:  # noqa: BLE001 - never let a read stop the worker
+        log.debug("reconcile failed", exc_info=True)
+        return
+    if report.matched:
+        log.info("reconcile: %s", report)
+
+
 def claim() -> tuple[uuid.UUID, str, dict] | None:
     """Take the oldest ready job. Returns plain values, not a live row.
 
@@ -344,6 +375,7 @@ async def loop(stop: asyncio.Event) -> None:
         if delay >= IDLE_MAX:
             reclaim_stale()
             sweep_sends()
+            sweep_reconcile()
 
         await _sleep_or_wake(stop, delay)
         delay = min(delay * 2, IDLE_MAX)

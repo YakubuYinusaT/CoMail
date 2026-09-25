@@ -19,7 +19,7 @@ What you do first, in a browser, before running this:
      screen of its own, which is what Cohandle is. Create it.
   3. Open the "Generate Code" tab. In the scope box paste exactly:
 
-         ZohoMail.messages.CREATE,ZohoMail.accounts.READ
+         ZohoMail.messages.CREATE,ZohoMail.messages.READ,ZohoMail.folders.READ,ZohoMail.accounts.READ
 
      Give it a description, pick the longest duration offered, and
      generate. Zoho shows you a short code.
@@ -54,7 +54,11 @@ _setkey = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_setkey)
 ignored, upsert = _setkey.ignored, _setkey.upsert
 
-SCOPE = "ZohoMail.messages.CREATE,ZohoMail.accounts.READ"
+# folders.READ and messages.READ are what let Cohandle look in your
+# Sent folder and record which drafts you actually sent. Reading
+# only: nothing in this project deletes or moves a message.
+SCOPE = ("ZohoMail.messages.CREATE,ZohoMail.messages.READ,"
+         "ZohoMail.folders.READ,ZohoMail.accounts.READ")
 
 REGIONS = {
     "1": ("com", "United States and most of the world, mail.zoho.com"),

@@ -72,7 +72,7 @@
       {% if d.send_state %}
         <span class="tag {{ 'good' if d.send_state in ('sent', 'drafted')
                             else 'bad' if d.send_state in ('failed', 'bounced')
-                            else 'plain' }}">{{ d.send_state }}</span>
+                            else 'plain' }}">{{ 'in your Zoho drafts' if d.send_state == 'drafted' else d.send_state }}</span>
         {% if d.send_note %}
           <span class="mute" style="display:block;font-size:var(--t-xs);margin-top:4px">
             {{ d.send_note }}</span>

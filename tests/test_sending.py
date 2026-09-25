@@ -205,10 +205,23 @@ def test_a_list_shaped_error_is_reported_not_crashed():
     several layers from the cause.
     """
     payload = [2, {"msg": "Error while processing!",
-                   "errorCode": "INVALID_OAUTHSCOPE", "status": "401"}]
+                   "errorCode": "SOME_OTHER_ERROR", "status": "401"}]
     with pytest.raises(zoho.ZohoError) as caught:
         zoho._json(FakeResponse(payload))
-    assert "INVALID_OAUTHSCOPE" in str(caught.value)
+    assert "SOME_OTHER_ERROR" in str(caught.value)
+
+
+def test_a_missing_scope_says_what_to_do_about_it():
+    """Zoho's own INVALID_OAUTHSCOPE leaves you refreshing a page.
+
+    It is a setup step, not a fault, so it gets its own type and a
+    message naming the fix.
+    """
+    payload = [2, {"msg": "Error while processing!",
+                   "errorCode": "INVALID_OAUTHSCOPE", "status": "401"}]
+    with pytest.raises(zoho.NeedsWiderScope) as caught:
+        zoho._json(FakeResponse(payload))
+    assert "zoho-setup" in str(caught.value)
 
 
 def test_a_normal_object_still_passes_through():

@@ -47,6 +47,15 @@ class NotArmed(RuntimeError):
     """Credentials exist but sending has not been switched on."""
 
 
+class NeedsWiderScope(ZohoError):
+    """The token can send but not read.
+
+    Raised so a caller can tell a missing permission from a broken
+    mailbox. The remedy is a new token, not a retry, and the message
+    should say so rather than leaving somebody refreshing a page.
+    """
+
+
 @dataclass
 class Token:
     value: str
@@ -127,6 +136,10 @@ def _json(response: httpx.Response) -> dict:
             if isinstance(item, dict):
                 code = item.get("errorCode") or item.get("status")
                 message = item.get("msg") or item.get("message") or item
+                if str(code) == "INVALID_OAUTHSCOPE":
+                    raise NeedsWiderScope(
+                        "this Zoho token may send but not read. Re-run "
+                        "zoho-setup.cmd to make one that can.")
                 raise ZohoError(f"{code}: {message}" if code else str(message))
     raise ZohoError(f"HTTP {response.status_code}, unexpected body: "
                     f"{str(payload)[:300]}")
@@ -182,6 +195,38 @@ def own_addresses() -> list[str]:
             if address:
                 addresses.append(address.lower())
     return sorted(set(addresses))
+
+
+def folders() -> list[dict]:
+    """Every folder in the mailbox. Read only, and needs folders.READ."""
+    return _call("GET", f"/api/accounts/{settings().zoho_account_id}/folders").get("data") or []
+
+
+def sent_folder_id() -> str | None:
+    """The Sent folder's id, whatever the account calls it.
+
+    Zoho marks system folders with a folderType, which survives renaming
+    and translation. The name is only a fallback.
+    """
+    found = folders()
+    for folder in found:
+        if str(folder.get("folderType", "")).lower() == "sent":
+            return str(folder.get("folderId"))
+    for folder in found:
+        if str(folder.get("folderName", "")).strip().lower() in ("sent", "sent items"):
+            return str(folder.get("folderId"))
+    return None
+
+
+def messages(folder_id: str, limit: int = 50, start: int = 1) -> list[dict]:
+    """Message headers from one folder, newest first.
+
+    Headers only. Cohandle never needs the body of something you sent,
+    and asking for less is one fewer thing to store by accident.
+    """
+    path = (f"/api/accounts/{settings().zoho_account_id}/messages/view"
+            f"?folderId={folder_id}&limit={int(limit)}&start={int(start)}")
+    return _call("GET", path).get("data") or []
 
 
 def create_draft(to: str, subject: str, body: str, html: bool = False) -> dict:

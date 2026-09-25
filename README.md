@@ -98,6 +98,35 @@ sending.
 python -m app.cli sends
 ```
 
+## Knowing what you actually sent
+
+Cohandle writes a draft into Zoho and then loses sight of it. You might
+send it, edit it first, sit on it for a week, or delete it. Until it
+knows which, its record of who you have approached is half a record, and
+anything built on top of that, follow-ups most of all, is built on a
+guess.
+
+So it reads your Sent folder and marks the ones that went:
+
+```bash
+python -m app.cli reconcile
+```
+
+The worker also does this every ten minutes while it is running.
+
+Matching is on recipient and time, not on the message id. Zoho hands back
+an id when the draft is created, and a draft edited and sent from the web
+client does not reliably keep it. The recipient is the stable fact: one
+target, one address, one approach. The subject is compared loosely,
+because editing it before sending is normal and should not break the
+match, and a message sent before the draft existed is skipped as an
+earlier approach to the same fund.
+
+This needs `ZohoMail.messages.READ` and `ZohoMail.folders.READ`, which
+the first setup did not ask for. Re-run `zoho-setup.cmd` and the scope it
+prints now includes them. Until then the command says so rather than
+failing obscurely. Nothing here writes to the mailbox.
+
 ## Addresses
 
 Cohandle once asked the model for email addresses and it produced five,
