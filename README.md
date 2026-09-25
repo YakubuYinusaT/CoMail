@@ -13,10 +13,19 @@ OEM, DisCo and partner outreach without rework.
 
 ## Screens
 
-`/` is Add: paste sites in, watch them get crawled and read. `/queue` is
-the review queue, `/targets` everything known, `/apply` the ones that
-want a form or an introduction. The front door is Add because that is
-where the work starts.
+The menu holds two kinds of screen, and the rule in it separates them.
+
+Left of the rule is the path work takes. **Add** (`/`) is where targets
+go in and where you watch them get crawled and read; it is also where you
+paste an address Cohandle will not invent and press Draft. **Review**
+(`/queue`) is the drafts waiting on your decision, read against the
+sourced facts beside them.
+
+Right of the rule is reference, not step three and four. **Targets**
+(`/targets`) is everything known, for answering what happened to
+something. **Apply & intro** (`/apply`) is the targets where email is the
+wrong move because the fund publishes a form, which is work you do by
+hand on somebody else's website.
 
 ## How it works
 

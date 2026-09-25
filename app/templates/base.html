@@ -87,6 +87,9 @@ nav a {
   font-size: var(--t-md); font-weight: 500; transition: background 160ms, color 160ms;
 }
 nav a:hover { background: var(--surface); color: var(--fg); }
+/* Divides doing from looking up. */
+nav .sep { width: 1px; height: 18px; align-self: center;
+           margin: 0 var(--s3); background: var(--line-strong); }
 nav a.on { color: var(--fg); background: var(--surface); box-shadow: inset 0 -2px 0 var(--red); }
 .spacer { margin-left: auto; }
 .ghost {
@@ -253,10 +256,13 @@ dialog td { padding: 5px 0; border: 0; }
   <a class="brand" href="/"><img src="/static/mark.png" alt="">CO<b>HANDLE</b></a>
   {% if nav != 'login' %}
   <nav>
-    {# Ordered by the work, not by what was built first: you add targets,
-       then review what came back, then look at the rest. #}
-    <a href="/intake" class="{{ 'on' if nav == 'intake' }}">Add</a>
-    <a href="/queue" class="{{ 'on' if nav == 'queue' }}">Queue</a>
+    {# Two kinds of screen, and the rule separates them. Left of it is
+       the path work takes: add targets, then review what came back.
+       Right of it is reference: everything known, and the ones that want
+       a form instead of an email. Those are not step three and four. #}
+    <a href="/" class="{{ 'on' if nav == 'intake' }}">Add</a>
+    <a href="/queue" class="{{ 'on' if nav == 'queue' }}">Review</a>
+    <span class="sep" aria-hidden="true"></span>
     <a href="/targets" class="{{ 'on' if nav == 'targets' }}">Targets</a>
     <a href="/apply" class="{{ 'on' if nav == 'apply' }}">Apply &amp; intro</a>
   </nav>
@@ -289,7 +295,7 @@ dialog td { padding: 5px 0; border: 0; }
     <tr><td><kbd>s</kbd></td><td class="mute">save edits</td></tr>
     <tr><td><kbd>e</kbd></td><td class="mute">jump into the body</td></tr>
     <tr><td><kbd>esc</kbd></td><td class="mute">leave the editor / close</td></tr>
-    <tr><td><kbd>u</kbd></td><td class="mute">back to the queue</td></tr>
+    <tr><td><kbd>u</kbd></td><td class="mute">back to review</td></tr>
   </table>
   <div style="margin-top:var(--s4)"><button onclick="help.close()">Close</button></div>
 </dialog>
