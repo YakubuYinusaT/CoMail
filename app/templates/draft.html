@@ -93,6 +93,17 @@
     </div>
     {% endif %}
 
+    {% if slop %}
+    <div class="card">
+      <p class="eyebrow">Reads like every other cold email · {{ slop|length }}</p>
+      <p class="faint" style="font-size:var(--t-sm);margin:0 0 var(--s3)">
+        On the banned list, and still here. Say the plain thing instead.</p>
+      {% for phrase in slop %}
+        <span class="tag warn" style="margin:0 4px 4px 0">{{ phrase }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <p class="eyebrow">Facts it may cite · {{ facts|length }}</p>
     <p class="faint" style="font-size:var(--t-sm);margin:0 0 var(--s3)">
       A red edge marks the ones this draft used. Open a link to check the claim.</p>

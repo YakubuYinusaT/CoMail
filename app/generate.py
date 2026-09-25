@@ -33,6 +33,8 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db import session
+from app.house_style import find as find_slop
+from app.house_style import for_prompt as slop_for_prompt
 from app.llm import ProviderNotConfigured, complete
 from app.models import Campaign, Contact, Draft, DraftFact, Fact, Target
 from app.qualify import SenderProfile, _parse_when, email_advice
@@ -145,7 +147,7 @@ class GeneratedEmail(BaseModel):
         return v.strip()
 
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT_TEMPLATE = """\
 You write one cold email from a founder to an investor.
 
 Two hard rules, and they cut in both directions.
@@ -203,13 +205,16 @@ prose or bullets in the middle, number leading or following, closing on a
 question or a direct ask, subject line never a fixed pattern.
 
 Banned outright. These appear in every cold email an investor deletes,
-and one of them is enough to make the rest read like the others:
+and one of them is enough to make the rest read like the others. Two
+kinds: the stock opener vocabulary, and the warm noises that claim a
+feeling about the reader. Nobody resonates with a fund's mission
+statement, and nothing is unlocked.
 
-  em dashes; "I hope this finds you well"; "reaching out"; "circling
-  back"; "synergy" or "synergies"; "excited to"; "aligns perfectly";
-  "perfect fit"; "significant fit"; "leverage" as a verb; "innovative";
-  "disrupting"; "cutting-edge"; "passionate about"; "we believe there is";
-  "would love to"; and their own marketing adjectives quoted back at them.
+{banned}
+
+Their own marketing adjectives quoted back at them are banned too. Where
+a word is only a cliche in one sense, the literal sense is fine: supply
+that was disrupted is disrupted, and a meter that unlocks unlocks.
 
 Write no greeting line and no sign-off. Not "Dear X", not "Best regards",
 not a name. The email starts at the first real sentence and stops at the
@@ -218,6 +223,11 @@ last one. Both are added afterwards.
 Return the fact ids you used, and one short line in `opened_on` naming
 how you chose to open.
 """
+
+# One list, rendered here and checked after generation. Keeping the two
+# apart would let them drift, and a prompt rule alone has already been
+# shown to be worth less than a check.
+SYSTEM_PROMPT = SYSTEM_PROMPT_TEMPLATE.format(banned=slop_for_prompt())
 
 
 def build_prompt(
@@ -281,6 +291,35 @@ def compose(
     )
 
 
+def compose_in_house_style(
+    target: Target, evidence: Evidence, sender: SenderProfile, campaign: Campaign,
+    model: str | None = None, attempts: int = 2,
+) -> tuple[GeneratedEmail, list[str]]:
+    """Compose, and send it back if it reads like every other cold email.
+
+    The banned list is in the prompt and the model still reaches for these
+    words, so it gets told which ones it used and asked again. Naming them
+    works far better than repeating the rule.
+
+    Returns whatever the last attempt produced along with anything still
+    in it. Nothing is blocked: a draft with one stock phrase in it is a
+    draft to edit, not a draft to withhold.
+    """
+    email = compose(target, evidence, sender, campaign, model=model)
+    for _ in range(attempts):
+        slop = find_slop(email.subject, email.body)
+        if not slop:
+            return email, []
+        email = compose(
+            target, evidence, sender, campaign, model=model,
+            nudge=("Your previous draft used " + ", ".join(f'"{s}"' for s in slop)
+                   + ". Those are on the banned list. Write it again without "
+                     "them, and without reaching for a synonym of the same "
+                     "gesture: say the plain thing instead."),
+        )
+    return email, find_slop(email.subject, email.body)
+
+
 def validate_used_facts(email: GeneratedEmail, allowed: list[Fact]) -> list[Fact]:
     """Keep only ids that were offered. An invented id is discarded."""
     by_id = {str(f.id): f for f in allowed}
@@ -300,6 +339,8 @@ class GenerationReport:
     failed: list[tuple[str, str]] = field(default_factory=list)
     regenerated: list[str] = field(default_factory=list)
     still_similar: list[str] = field(default_factory=list)
+    # domain -> stock phrases that survived the rewrites
+    house_style: dict[str, list[str]] = field(default_factory=dict)
     worst: dict[str, float] = field(default_factory=dict)
 
 
@@ -341,7 +382,10 @@ def generate_campaign(
                 report.without_facts.append(target.domain)
 
             try:
-                email = compose(target, evidence, sender, campaign, model=model)
+                email, slop = compose_in_house_style(
+                    target, evidence, sender, campaign, model=model)
+                if slop:
+                    report.house_style[target.domain] = slop
             except ProviderNotConfigured:
                 raise
             except Exception as exc:

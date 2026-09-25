@@ -25,6 +25,7 @@ from app.db import session
 from app.ingest import ingest
 from app.intake import board, counts
 from app.models import Assessment, Campaign, Contact, Draft, DraftFact, Fact, Page, Target
+from app.house_style import find as find_slop
 from app.qualify import email_advice
 from app.sender_claims import review as review_sender
 from app.worker import ENRICH, GENERATE, enqueue
@@ -149,6 +150,8 @@ def draft_detail(request: Request, draft_id: str):
         campaign = s.get(Campaign, d.campaign_id)
         pitch = (campaign.sender_profile or {}).get("pitch", "") if campaign else ""
         claims = review_sender(d.body, pitch)
+        # Checked live too, so editing a phrase out clears it.
+        slop = find_slop(d.subject, d.body)
         ctx = {
             "nav": "queue", "d": d, "t": t, "contact": c,
             "score": a.score if a else None,
@@ -158,7 +161,7 @@ def draft_detail(request: Request, draft_id: str):
             "app": profile.get("application") or {},
             "observations": profile.get("observations") or [],
             "email_ok": ok, "advice_why": why,
-            "sender_claims": claims,
+            "sender_claims": claims, "slop": slop,
             "claims_wrong": sum(1 for cl in claims
                                 if cl.severity in ("contradicted", "unsupported")),
         }
