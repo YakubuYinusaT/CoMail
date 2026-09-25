@@ -186,7 +186,8 @@ def own_addresses() -> list[str]:
 
 def send(to: str, subject: str, body: str,
          schedule_at: str | None = None, timezone: str | None = None,
-         to_self: bool = False) -> dict:
+         to_self: bool = False, mode: str | None = None,
+         html: bool = False) -> dict:
     """Send one plaintext email. Returns Zoho's data block.
 
     `schedule_at` is Zoho's own format, MM/DD/YYYY HH:MM:SS, and requires
@@ -216,9 +217,14 @@ def send(to: str, subject: str, body: str,
         "toAddress": to,
         "subject": subject,
         "content": body,
-        "mailFormat": "plaintext",
+        "mailFormat": "html" if html else "plaintext",
         "askReceipt": "no",
     }
+    if mode:
+        # "draft" leaves the message in the Drafts folder instead of
+        # sending it, which is the difference between Cohandle delivering
+        # and Cohandle handing you something to send yourself.
+        payload["mode"] = mode
     if schedule_at:
         if not timezone:
             raise ZohoError("scheduling needs a timezone")

@@ -472,12 +472,14 @@ def cmd_testsend(args: argparse.Namespace) -> int:
         return 1
 
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # The timestamp goes in the subject, not the body. A date stamped
+    # above the signature looks like a machine wrote the email, which
+    # is the opposite of the impression these are meant to give.
     body = (
         "This is a test from Cohandle.\n\n"
         "Nothing was sent to anybody else. This is what a real Cohandle\n"
         "email looks like on the way out, including the signature below\n"
-        "if one is configured.\n\n"
-        f"Sent {stamp}."
+        "if one is configured."
     )
 
     # Carry whatever a real send would carry. A test that leaves the
@@ -493,7 +495,7 @@ def cmd_testsend(args: argparse.Namespace) -> int:
 
     print(f"sending one test message to {to}...")
     try:
-        data = zoho.send(to, "Cohandle test message", body, to_self=True)
+        data = zoho.send(to, f"Cohandle test message, {stamp}", body, to_self=True)
     except Exception as exc:  # noqa: BLE001 - the reason is the whole point
         print(f"failed: {exc}")
         return 1
