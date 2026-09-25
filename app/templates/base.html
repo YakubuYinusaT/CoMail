@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Cohandle{% endblock %}</title>
-<link rel="icon" href="/static/mark.png">
+<!-- The white tile, not the bare mark: in app mode the taskbar takes
+     its icon from here, and thin red lines on transparency vanish
+     against a dark taskbar. The header keeps the bare mark. -->
+<link rel="icon" href="/static/cohandle.ico" sizes="any">
 <style>
 /* Poppins, served locally. Cohandle runs on a laptop in Lagos as often as
    on Cloud Run, and a webfont CDN is a dependency neither needs. */
@@ -250,8 +253,10 @@ dialog td { padding: 5px 0; border: 0; }
   <a class="brand" href="/"><img src="/static/mark.png" alt="">CO<b>HANDLE</b></a>
   {% if nav != 'login' %}
   <nav>
-    <a href="/" class="{{ 'on' if nav == 'queue' }}">Queue</a>
+    {# Ordered by the work, not by what was built first: you add targets,
+       then review what came back, then look at the rest. #}
     <a href="/intake" class="{{ 'on' if nav == 'intake' }}">Add</a>
+    <a href="/" class="{{ 'on' if nav == 'queue' }}">Queue</a>
     <a href="/targets" class="{{ 'on' if nav == 'targets' }}">Targets</a>
     <a href="/apply" class="{{ 'on' if nav == 'apply' }}">Apply &amp; intro</a>
   </nav>
