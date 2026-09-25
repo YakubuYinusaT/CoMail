@@ -11,6 +11,40 @@ on there.
 Built first for the Connected Intelligence raise. Designed to generalise to
 OEM, DisCo and partner outreach without rework.
 
+## Sending
+
+Nothing leaves until `SEND_ENABLED=true`. Credentials are not permission:
+with a working Zoho token and that flag false, Cohandle does every step
+up to the API call and records what it would have sent.
+
+Prove the credentials without putting anything in anybody's inbox:
+
+```bash
+python -m app.cli zoho
+```
+
+That is a read. It lists the mailboxes the token can see, which settles
+the three things that go wrong and in the order they go wrong: whether
+the refresh token works, whether the region is right, and what the
+account id actually is. Zoho is regional, and a `.eu` account called
+against `.com` fails with an error that reads like a scope problem and is
+not one.
+
+Approving a draft queues a send. It does not send one. Between approval
+and delivery sit a window, an hourly cap and a daily cap, all in
+settings: 08:30 to 17:30 Africa/Lagos, six an hour, thirty a day. A send
+outside those is not an error; it waits, and the row says what it is
+waiting for.
+
+One send per draft, ever. The row is written and committed before the API
+call, so a crash between the two leaves something a person can look at
+rather than an email nobody recorded. Sending twice is worse than not
+sending.
+
+```bash
+python -m app.cli sends
+```
+
 ## The two directions a draft can lie
 
 Claims about the **recipient** are checked against the pages Cohandle

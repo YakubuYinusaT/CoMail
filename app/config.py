@@ -44,6 +44,11 @@ class Settings(BaseSettings):
 
     internal_token: str = Field(default="", alias="INTERNAL_TOKEN")
 
+    # The arming switch. Credentials are not permission: with these set
+    # and this false, Cohandle does everything up to the API call and
+    # records what it would have sent. Nothing reaches anybody.
+    send_enabled: bool = Field(default=False, alias="SEND_ENABLED")
+
     # Shared password for the review queue. Empty disables the login
     # entirely: correct locally, and correct in production once Identity
     # Aware Proxy is doing the checking instead. See app/auth.py.

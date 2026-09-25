@@ -55,7 +55,9 @@
     <label class="field">
       <span>Body
         <span class="faint" style="text-transform:none;letter-spacing:0;font-weight:400">
-          — signature is added on send</span></span>
+          {% if signature %}· a signature is added on send
+          {% else %}· no signature is configured, so this sends as written
+          {% endif %}</span></span>
       <textarea name="body">{{ d.body }}</textarea>
     </label>
 

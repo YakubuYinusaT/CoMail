@@ -9,6 +9,17 @@
   <span class="faint keyhint">Press <kbd>j</kbd> <kbd>k</kbd> to move, <kbd>enter</kbd> to open.</span>
 </p>
 
+{# Said once, plainly. Approving is not sending, and you should never
+   have to guess which state the thing is in. #}
+<div class="note {{ 'ok' if send_ok }}" style="{% if not send_ok %}border-left-color:var(--warn){% endif %}">
+  <div>
+    {% if send_ok %}<strong>Sending is on.</strong> Approving queues an email to
+      go out. {{ send_why }}.
+    {% else %}<strong>Nothing will leave this machine.</strong> Approving records
+      the decision and queues it; {{ send_why }}.{% endif %}
+  </div>
+</div>
+
 {% if not drafts %}
   <div class="empty">
     Nothing drafted yet.
@@ -55,6 +66,15 @@
       {% elif d.status == 'rejected' %}<span class="tag bad">rejected</span>
       {% elif d.status == 'edited' %}<span class="tag plain">edited</span>
       {% else %}<span class="tag plain">new</span>{% endif %}
+      {% if d.send_state %}
+        <span class="tag {{ 'good' if d.send_state == 'sent'
+                            else 'bad' if d.send_state in ('failed', 'bounced')
+                            else 'plain' }}">{{ d.send_state }}</span>
+        {% if d.send_note %}
+          <span class="mute" style="display:block;font-size:var(--t-xs);margin-top:4px">
+            {{ d.send_note }}</span>
+        {% endif %}
+      {% endif %}
     </td>
   </tr>
   {% endfor %}

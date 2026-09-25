@@ -24,9 +24,11 @@ from app.config import settings
 from app.db import session
 from app.ingest import ingest
 from app.intake import board, counts
-from app.models import Assessment, Campaign, Contact, Draft, DraftFact, Fact, Page, Target
+from app.models import (Assessment, Campaign, Contact, Draft, DraftFact, Fact,
+                        Page, Send, Target)
 from app.house_style import find as find_slop
 from app.qualify import email_advice
+from app.sending import may_send, queue as queue_send, signature
 from app.sender_claims import review as review_sender
 from app.worker import ENRICH, GENERATE, enqueue
 
@@ -110,7 +112,10 @@ def queue(request: Request):
                 Assessment.target_id == t.id,
                 Assessment.campaign_id == d.campaign_id))
             ok, _ = email_advice(t.profile or {}, c is not None)
+            sent = s.scalar(select(Send).where(Send.draft_id == d.id))
             rows.append({
+                "send_state": sent.state if sent else None,
+                "send_note": (sent.error or "") if sent else "",
                 "id": str(d.id), "domain": t.domain, "name": t.name or t.domain,
                 "score": a.score if a else None, "hook_type": d.hook_type,
                 "similarity_max": d.similarity_max, "status": d.status,
@@ -118,8 +123,10 @@ def queue(request: Request):
                 "verified": c.verified if c else False, "email_ok": ok,
             })
     pending = sum(1 for r in rows if r["status"] in ("generated", "edited"))
+    decision = may_send()
     return templates.TemplateResponse(request, "queue.html", {
         "drafts": rows, "nav": "queue", "pending": pending,
+        "send_ok": decision.ok, "send_why": decision.why,
         "campaign": campaign.name if campaign else None,
         "threshold": settings().sameness_threshold,
     })
@@ -152,6 +159,7 @@ def draft_detail(request: Request, draft_id: str):
         claims = review_sender(d.body, pitch)
         # Checked live too, so editing a phrase out clears it.
         slop = find_slop(d.subject, d.body)
+        sign = signature(campaign)
         ctx = {
             "nav": "queue", "d": d, "t": t, "contact": c,
             "score": a.score if a else None,
@@ -161,7 +169,7 @@ def draft_detail(request: Request, draft_id: str):
             "app": profile.get("application") or {},
             "observations": profile.get("observations") or [],
             "email_ok": ok, "advice_why": why,
-            "sender_claims": claims, "slop": slop,
+            "sender_claims": claims, "slop": slop, "signature": sign,
             "claims_wrong": sum(1 for cl in claims
                                 if cl.severity in ("contradicted", "unsupported")),
         }
@@ -181,6 +189,7 @@ def draft_save(
     Approving records who and when, because 'nothing sends without a
     human approving it' is only true if the approval is written down.
     """
+    approved: str | None = None
     with session() as s:
         d = s.get(Draft, draft_id)
         if d is None:
@@ -217,8 +226,16 @@ def draft_save(
             d.status = "approved"
             d.edited_by = d.edited_by or "operator"
             d.edited_at = d.edited_at or now
+            approved = str(d.id)
         elif action == "reject":
             d.status = "rejected"
+            approved = None
+
+    # Queued outside the session above, so the approval is committed
+    # before anything intends to send it. Queueing is not sending: the
+    # window, the caps and SEND_ENABLED all still apply.
+    if approved:
+        queue_send(approved)
 
     return RedirectResponse("/queue" if action != "save" else f"/draft/{draft_id}",
                             status_code=303)

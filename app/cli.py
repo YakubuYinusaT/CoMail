@@ -22,7 +22,8 @@ from app.db import session
 from app.ingest import ingest
 from app.generate import generate_campaign
 from app.qualify import qualify_campaign
-from app.models import Campaign, Contact, Page, Target
+from app.config import settings
+from app.models import Campaign, Contact, Draft, Page, Target
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
@@ -372,6 +373,59 @@ def cmd_queue(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_zoho(args: argparse.Namespace) -> int:
+    """Prove the credentials without sending anything.
+
+    This is a read. It lists the mailboxes the token can see, which
+    settles the three things that go wrong in order: whether the refresh
+    token works, whether the region is right, and what the account id
+    actually is.
+    """
+    from app import zoho
+
+    try:
+        found = zoho.accounts()
+    except zoho.ZohoError as exc:
+        print(f"no: {exc}")
+        return 1
+
+    cfg = settings()
+    print(f"talking to {cfg.zoho_api_base}")
+    for account in found:
+        ident = str(account.get("accountId", ""))
+        marker = "  <- ZOHO_ACCOUNT_ID" if ident == cfg.zoho_account_id else ""
+        print(f"  {ident}  {account.get('primaryEmailAddress', '?')}{marker}")
+    if not cfg.zoho_account_id:
+        print("ZOHO_ACCOUNT_ID is not set. Copy the id above into .env.")
+    return 0
+
+
+def cmd_sends(args: argparse.Namespace) -> int:
+    """What has left, what is waiting, and what it is waiting for."""
+    from app.models import Send
+    from app.sending import may_send
+
+    decision = may_send()
+    print(f"sending: {'ARMED' if decision.ok else 'held'} ({decision.why})")
+
+    with session() as s:
+        rows = s.scalars(select(Send).order_by(Send.created_at.desc())
+                         .limit(args.limit)).all()
+        if not rows:
+            print("nothing queued or sent")
+            return 0
+        print()
+        for row in rows:
+            draft = s.get(Draft, row.draft_id)
+            target = s.get(Target, draft.target_id) if draft else None
+            when = row.sent_at or row.scheduled_for
+            print(f"  {row.state:9} {(target.domain if target else '?'):28} "
+                  f"{when.strftime('%Y-%m-%d %H:%M') if when else '':16}")
+            if row.error:
+                print(f"            {row.error}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cohandle")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -446,6 +500,13 @@ def main(argv: list[str] | None = None) -> int:
     p_queue = sub.add_parser("queue", help="show the job queue")
     p_queue.add_argument("--limit", type=int, default=20)
     p_queue.set_defaults(func=cmd_queue)
+
+    p_zoho = sub.add_parser("zoho", help="check Zoho credentials, sends nothing")
+    p_zoho.set_defaults(func=cmd_zoho)
+
+    p_sends = sub.add_parser("sends", help="delivery state")
+    p_sends.add_argument("--limit", type=int, default=20)
+    p_sends.set_defaults(func=cmd_sends)
 
     p_status = sub.add_parser("status", help="what is in the database")
     p_status.add_argument("--limit", type=int, default=25)
