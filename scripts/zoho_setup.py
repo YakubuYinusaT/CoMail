@@ -64,8 +64,18 @@ REGIONS = {
 }
 
 
-def ask(label: str, secret: bool = True) -> str:
-    value = (getpass(f"{label}: ") if secret else input(f"{label}: ")).strip()
+# Shown on screen by default. This runs on your own machine, and two of
+# the three values look alike enough that not seeing what you pasted is
+# the more likely way to get it wrong. Pass --hide when someone is
+# watching your screen.
+HIDE_INPUT = "--hide" in sys.argv
+
+
+def ask(label: str) -> str:
+    if HIDE_INPUT:
+        value = getpass(f"{label}: ").strip()
+    else:
+        value = input(f"{label}: ").strip()
     if not value:
         print("Nothing entered. Stopping so you can start again.")
         raise SystemExit(1)
@@ -125,8 +135,9 @@ def main() -> int:
         return 0
 
     region = pick_region()
-    print("\nThree values now, one at a time. Nothing is shown as you paste,")
-    print("so the prompt will look like it is ignoring you. It is not.")
+    print("\nThree values now, one at a time. They stay on screen so you can")
+    print("see what you pasted. Run this with --hide if that is not what you")
+    print("want.")
 
     print("\n1 of 3. The Client ID, from the Client Secret tab of the API")
     print("        console. It begins with 1000. and does not expire.")
