@@ -474,15 +474,22 @@ def cmd_testsend(args: argparse.Namespace) -> int:
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     body = (
         "This is a test from Cohandle.\n\n"
-        "Nothing was sent to anybody else. It exists to answer one\n"
-        "question: whether Zoho adds the signature you configured in its\n"
-        "web client to mail sent through the API, or only to mail written\n"
-        "in that web client.\n\n"
-        "Look at what arrives. If your signature is below this paragraph,\n"
-        "Zoho is adding it and Cohandle should not. If there is nothing\n"
-        "below this paragraph, Cohandle needs to add it.\n\n"
+        "Nothing was sent to anybody else. This is what a real Cohandle\n"
+        "email looks like on the way out, including the signature below\n"
+        "if one is configured.\n\n"
         f"Sent {stamp}."
     )
+
+    # Carry whatever a real send would carry. A test that leaves the
+    # signature out is a test of a different email.
+    from app.models import Campaign
+    from app.sending import signature
+
+    with session() as s:
+        campaign = s.scalar(select(Campaign).order_by(Campaign.created_at.desc()))
+        sign = signature(campaign)
+    if sign:
+        body += "\n\n" + sign
 
     print(f"sending one test message to {to}...")
     try:

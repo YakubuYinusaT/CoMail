@@ -214,3 +214,12 @@ def test_a_body_that_is_not_json_says_so():
     with pytest.raises(zoho.ZohoError) as caught:
         zoho._json(FakeResponse(_INVALID, status_code=502, text="<html>nope"))
     assert "502" in str(caught.value)
+
+
+def test_the_signature_comes_from_the_campaign():
+    """Zoho does not add it to API mail, proven by a delivered test."""
+    campaign = FakeCampaign({"signature": "Yinusa Yakubu Temitope\nwww.ciit.africa"})
+    body = sending.full_body(FakeDraft("The email."), campaign)
+    assert body.splitlines()[-1] == "www.ciit.africa"
+    # One blank line between the email and the signature, not none.
+    assert "The email.\n\nYinusa" in body
