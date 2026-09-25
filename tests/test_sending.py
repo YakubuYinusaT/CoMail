@@ -29,8 +29,14 @@ def at(hour: int, minute: int = 0) -> datetime:
 
 @pytest.fixture(autouse=True)
 def armed(monkeypatch):
-    """A configured, armed, empty day unless a test says otherwise."""
+    """A configured, armed, empty day in direct-send mode.
+
+    delivery_mode is forced to "send" because the window and the caps
+    only govern delivery. In the default draft mode they are skipped, so
+    a test of them has to say which mode it means.
+    """
     cfg = settings()
+    monkeypatch.setattr(cfg, "delivery_mode", "send", raising=False)
     monkeypatch.setattr(cfg, "send_enabled", True, raising=False)
     monkeypatch.setattr(cfg, "send_window_start", "08:30", raising=False)
     monkeypatch.setattr(cfg, "send_window_end", "17:30", raising=False)
@@ -223,3 +229,44 @@ def test_the_signature_comes_from_the_campaign():
     assert body.splitlines()[-1] == "www.ciit.africa"
     # One blank line between the email and the signature, not none.
     assert "The email.\n\nYinusa" in body
+
+
+# ------------------------------------------------------------- drafting
+
+def test_drafting_needs_no_arming(armed, monkeypatch):
+    """A draft reaches nobody, so the arming switch has nothing to guard."""
+    monkeypatch.setattr(armed, "delivery_mode", "draft")
+    monkeypatch.setattr(armed, "send_enabled", False)
+    assert sending.drafting()
+    assert sending.may_send(at(3)).ok, "3am, unarmed, and still fine"
+
+
+def test_drafting_ignores_the_window_and_the_caps(armed, monkeypatch):
+    monkeypatch.setattr(armed, "delivery_mode", "draft")
+    monkeypatch.setattr(sending, "counts", lambda now: (999, 999))
+    assert sending.may_send(at(23, 59)).ok
+
+
+def test_the_mode_is_read_leniently():
+    cfg = settings()
+    for value, expected in [("draft", True), ("DRAFT", True), (" draft ", True),
+                            ("send", False), ("", False)]:
+        object.__setattr__(cfg, "delivery_mode", value)
+        assert sending.drafting() is expected, value
+    object.__setattr__(cfg, "delivery_mode", "draft")
+
+
+def test_a_draft_zoho_did_not_confirm_is_a_failure(monkeypatch):
+    """If mode were ever ignored, the email would already be delivered."""
+    monkeypatch.setattr(zoho, "_call", lambda *a, **k: {"data": {"mode": "send"}})
+    monkeypatch.setattr(zoho, "_require", lambda *names: None)
+    with pytest.raises(zoho.ZohoError) as caught:
+        zoho.create_draft("someone@fund.com", "Subject", "Body")
+    assert "may have been delivered" in str(caught.value)
+
+
+def test_a_confirmed_draft_comes_back(monkeypatch):
+    monkeypatch.setattr(zoho, "_call",
+                        lambda *a, **k: {"data": {"mode": "draft", "messageId": "9"}})
+    monkeypatch.setattr(zoho, "_require", lambda *names: None)
+    assert zoho.create_draft("someone@fund.com", "S", "B")["messageId"] == "9"

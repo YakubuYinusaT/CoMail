@@ -28,7 +28,7 @@ from app.models import (Assessment, Campaign, Contact, Draft, DraftFact, Fact,
                         Page, Send, Target)
 from app.house_style import find as find_slop
 from app.qualify import email_advice
-from app.sending import may_send, queue as queue_send, signature
+from app.sending import drafting, may_send, queue as queue_send, signature
 from app.sender_claims import review as review_sender
 from app.worker import ENRICH, GENERATE, enqueue
 
@@ -127,6 +127,7 @@ def queue(request: Request):
     return templates.TemplateResponse(request, "queue.html", {
         "drafts": rows, "nav": "queue", "pending": pending,
         "send_ok": decision.ok, "send_why": decision.why,
+        "drafting": drafting(),
         "campaign": campaign.name if campaign else None,
         "threshold": settings().sameness_threshold,
     })

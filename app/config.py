@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # records what it would have sent. Nothing reaches anybody.
     send_enabled: bool = Field(default=False, alias="SEND_ENABLED")
 
+    # "draft" leaves each approved email in Zoho's Drafts folder for you
+    # to send yourself, which is how the designed HTML signature and any
+    # last edit get applied. "send" delivers directly and is what the
+    # caps, the window and SEND_ENABLED all govern. Drafting reaches
+    # nobody, so it does not need arming.
+    delivery_mode: str = Field(default="draft", alias="DELIVERY_MODE")
+
     # Shared password for the review queue. Empty disables the login
     # entirely: correct locally, and correct in production once Identity
     # Aware Proxy is doing the checking instead. See app/auth.py.

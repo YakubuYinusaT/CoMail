@@ -85,10 +85,22 @@ def counts(now: datetime) -> tuple[int, int]:
     return today, hour
 
 
+def drafting() -> bool:
+    """True when approved emails go to Zoho's Drafts rather than out."""
+    return settings().delivery_mode.strip().lower() == "draft"
+
+
 def may_send(now: datetime | None = None) -> Decision:
     """The whole discipline in one answer."""
     cfg = settings()
     now = now or datetime.now(zone())
+
+    # Drafting reaches nobody, so none of the discipline below applies to
+    # it. The window and the caps exist to protect a sending reputation;
+    # a message sitting in your own Drafts folder has no reputation to
+    # damage and no recipient to annoy.
+    if drafting():
+        return Decision(True, "drafts go to Zoho for you to send")
 
     if not cfg.send_enabled:
         return Decision(False, "SEND_ENABLED is false, so nothing is armed")
@@ -179,8 +191,10 @@ def dispatch_one(send_id: str, now: datetime | None = None) -> str:
 
     # Outside the session on purpose: an HTTP call must not hold a
     # database connection open, and the row above is already committed.
+    to_drafts = drafting()
     try:
-        data = zoho.send(to, subject, body)
+        data = (zoho.create_draft(to, subject, body) if to_drafts
+                else zoho.send(to, subject, body))
     except zoho.NotArmed as exc:
         with session() as s:
             s.get(Send, send_id).error = str(exc)
@@ -194,15 +208,18 @@ def dispatch_one(send_id: str, now: datetime | None = None) -> str:
 
     with session() as s:
         row = s.get(Send, send_id)
-        row.state = "sent"
-        row.sent_at = datetime.now(zone())
+        # "drafted" is not "sent". Nobody has received anything, and the
+        # message may sit in Drafts forever, so sent_at stays empty until
+        # something has actually gone.
+        row.state = "drafted" if to_drafts else "sent"
+        row.sent_at = None if to_drafts else datetime.now(zone())
         row.error = None
         row.zoho_message_id = str(data.get("messageId") or "") or None
         # Zoho does not always name the thread field the same way; keep
         # whichever is present so replies can be threaded later.
         row.thread_id = str(data.get("threadId") or "") or None
-    log.info("sent %s to %s", send_id, to)
-    return "sent"
+    log.info("%s %s to %s", "drafted" if to_drafts else "sent", send_id, to)
+    return "drafted" if to_drafts else "sent"
 
 
 def due(limit: int = 20) -> list[str]:

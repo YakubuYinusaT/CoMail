@@ -265,7 +265,10 @@ class Send(Base, Timestamped):
     error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        _enum("state", "queued", "sent", "bounced", "failed", "cancelled"),
+        # "drafted" means Cohandle put it in Zoho's Drafts folder and a
+        # person sends it from there. It is deliberately not "sent":
+        # nobody has received anything, and it may sit in Drafts forever.
+        _enum("state", "queued", "drafted", "sent", "bounced", "failed", "cancelled"),
         Index("ix_send_state_scheduled", "state", "scheduled_for"),
         Index("ix_send_thread", "thread_id"),
     )

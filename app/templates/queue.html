@@ -13,7 +13,10 @@
    have to guess which state the thing is in. #}
 <div class="note {{ 'ok' if send_ok }}" style="{% if not send_ok %}border-left-color:var(--warn){% endif %}">
   <div>
-    {% if send_ok %}<strong>Sending is on.</strong> Approving queues an email to
+    {% if drafting %}<strong>Approving puts the email in your Zoho Drafts.</strong>
+      Cohandle does not deliver anything. You open Zoho, read it once more, and
+      press send yourself, which is where your designed signature is added.
+    {% elif send_ok %}<strong>Sending is on.</strong> Approving queues an email to
       go out. {{ send_why }}.
     {% else %}<strong>Nothing will leave this machine.</strong> Approving records
       the decision and queues it; {{ send_why }}.{% endif %}
@@ -67,7 +70,7 @@
       {% elif d.status == 'edited' %}<span class="tag plain">edited</span>
       {% else %}<span class="tag plain">new</span>{% endif %}
       {% if d.send_state %}
-        <span class="tag {{ 'good' if d.send_state == 'sent'
+        <span class="tag {{ 'good' if d.send_state in ('sent', 'drafted')
                             else 'bad' if d.send_state in ('failed', 'bounced')
                             else 'plain' }}">{{ d.send_state }}</span>
         {% if d.send_note %}

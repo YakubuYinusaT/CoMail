@@ -13,6 +13,27 @@ OEM, DisCo and partner outreach without rework.
 
 ## Sending
 
+`DELIVERY_MODE` decides what approving a draft does, and it is `draft`.
+
+In draft mode Cohandle writes the email into your Zoho **Drafts** folder
+and stops. You open Zoho, read it once more and press send yourself.
+That is where your designed HTML signature gets applied, because Zoho's
+web composer adds it and its API does not. Nothing is delivered by
+Cohandle, so the arming switch, the sending window and the caps do not
+apply: a message in your own Drafts folder has no recipient to annoy.
+
+The row records `drafted`, never `sent`, and leaves `sent_at` empty.
+Nobody has received anything and the message may sit in Drafts forever,
+so saying otherwise would put a claim in the database that nothing
+supports.
+
+Zoho's reply is checked rather than trusted. If it ever stops honouring
+`mode`, the difference is a private note versus a cold email an investor
+has already read, so an unconfirmed draft is treated as a failure.
+
+Set `DELIVERY_MODE=send` to deliver directly instead. Everything below
+governs that mode only.
+
 Nothing leaves until `SEND_ENABLED=true`. Credentials are not permission:
 with a working Zoho token and that flag false, Cohandle does every step
 up to the API call and records what it would have sent.

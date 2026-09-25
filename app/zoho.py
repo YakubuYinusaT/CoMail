@@ -184,6 +184,43 @@ def own_addresses() -> list[str]:
     return sorted(set(addresses))
 
 
+def create_draft(to: str, subject: str, body: str, html: bool = False) -> dict:
+    """Leave the email in Zoho's Drafts folder instead of delivering it.
+
+    This does not check SEND_ENABLED, because a draft reaches nobody.
+    That is the whole point of the mode: Cohandle does the research and
+    the writing, and a person presses send in Zoho, where their designed
+    signature and any last edit are applied.
+
+    The response is checked rather than trusted. If Zoho ever stops
+    honouring `mode`, the difference between a draft and a delivered
+    email is the difference between a private note and a cold email an
+    investor has already read, so a reply that does not say "draft" is
+    treated as a failure loud enough to notice.
+    """
+    if not to or "@" not in to:
+        raise ZohoError(f"refusing to draft to {to!r}")
+    _require("zoho_account_id", "zoho_from_address")
+
+    cfg = settings()
+    log.info("drafting to %s", to)
+    data = _call("POST", f"/api/accounts/{cfg.zoho_account_id}/messages", json={
+        "fromAddress": cfg.zoho_from_address,
+        "toAddress": to,
+        "subject": subject,
+        "content": body,
+        "mailFormat": "html" if html else "plaintext",
+        "askReceipt": "no",
+        "mode": "draft",
+    }).get("data") or {}
+
+    if str(data.get("mode", "")).lower() != "draft":
+        raise ZohoError(
+            "Zoho did not confirm draft mode, so this message may have been "
+            f"delivered rather than saved. It answered: {data!r}")
+    return data
+
+
 def send(to: str, subject: str, body: str,
          schedule_at: str | None = None, timezone: str | None = None,
          to_self: bool = False, mode: str | None = None,
