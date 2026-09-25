@@ -397,6 +397,38 @@ def cmd_zoho(args: argparse.Namespace) -> int:
         print(f"  {ident}  {account.get('primaryEmailAddress', '?')}{marker}")
     if not cfg.zoho_account_id:
         print("ZOHO_ACCOUNT_ID is not set. Copy the id above into .env.")
+        return 1
+
+    # Zoho refuses a fromAddress that is not on the account, and the
+    # message it gives back does not say so plainly. Better to find out
+    # here than on the first real send.
+    chosen = next((a for a in found
+                   if str(a.get("accountId")) == cfg.zoho_account_id), None)
+    if chosen is None:
+        print()
+        print(f"ZOHO_ACCOUNT_ID {cfg.zoho_account_id} is not in that list.")
+        return 1
+
+    allowed = [d.get("fromAddress") for d in (chosen.get("sendMailDetails") or [])]
+    print()
+    if not cfg.zoho_from_address:
+        print("ZOHO_FROM_ADDRESS is not set. It must be one of:")
+        for address in allowed:
+            print(f"  {address}")
+        return 1
+    if cfg.zoho_from_address in allowed:
+        print(f"sending as {cfg.zoho_from_address}, which this account allows")
+    else:
+        print(f"{cfg.zoho_from_address} is NOT one this account may send as.")
+        print("Zoho would refuse it. Allowed:")
+        for address in allowed:
+            print(f"  {address}")
+        return 1
+
+    from app.sending import may_send
+
+    decision = may_send()
+    print(f"sending is {'ARMED' if decision.ok else 'held'}: {decision.why}")
     return 0
 
 
