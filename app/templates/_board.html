@@ -17,7 +17,7 @@
         </td>
         <td>
           <span class="tag {{ 'bad' if r.stage == 'failed'
-                              else 'good' if r.stage in ('ready', 'drafted')
+                              else 'good' if r.stage in ('ready', 'drafted', 'apply')
                               else 'warn' if r.stage == 'stalled' else 'plain' }}">
             {{ r.label }}</span>
           {% if r.stage in ('queued', 'working', 'drafting') %}<span class="spin"></span>{% endif %}
@@ -36,16 +36,25 @@
               <input type="hidden" name="domain" value="{{ r.domain }}">
               <button type="submit">Draft</button>
             </form>
-          {% elif r.stage == 'needs_email' %}
-            {# Cohandle will not invent an address. This is where yours goes. #}
-            <form method="post" action="/intake/contact"
-                  style="margin:0;display:flex;gap:var(--s2);justify-content:flex-end">
-              <input type="hidden" name="domain" value="{{ r.domain }}">
-              <input type="text" name="email" inputmode="email"
-                     placeholder="address you found"
-                     style="width:200px;padding:6px var(--s2);font-size:var(--t-sm)">
-              <button type="submit">Add</button>
-            </form>
+          {% elif r.stage in ('needs_email', 'apply') %}
+            {# Cohandle will not invent an address. This is where yours goes.
+               For a fund that publishes a form the form is the route, so
+               the link leads and the address is offered, not demanded. #}
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+              {% if r.stage == 'apply' and r.apply_url %}
+                <a href="{{ r.apply_url }}" target="_blank" rel="noopener"
+                   class="mono" style="font-size:var(--t-sm)">Open their form &rarr;</a>
+              {% endif %}
+              <form method="post" action="/intake/contact"
+                    style="margin:0;display:flex;gap:var(--s2);justify-content:flex-end">
+                <input type="hidden" name="domain" value="{{ r.domain }}">
+                <input type="text" name="email" inputmode="email"
+                       placeholder="{{ 'address, only if you want to ask first'
+                                       if r.stage == 'apply' else 'address you found' }}"
+                       style="width:230px;padding:6px var(--s2);font-size:var(--t-sm)">
+                <button type="submit">Add</button>
+              </form>
+            </div>
           {% endif %}
         </td>
       </tr>

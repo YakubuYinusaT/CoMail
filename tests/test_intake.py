@@ -19,6 +19,10 @@ from app.intake import STAGE_LABEL, STAGE_ORDER, _stage, counts
 class FakeTarget:
     enriched_at: datetime | None = None
     channel_note: str | None = None
+    # Set during qualification. "form" and "intro" mean the fund
+    # publishes a way in, so an address is optional rather than missing.
+    channel: str | None = None
+    profile: dict | None = None
 
 
 @dataclass
@@ -64,11 +68,36 @@ def test_failed_enrich_surfaces_the_reason():
     assert detail == "robots.txt forbids it"
 
 
-def test_read_but_no_address_waits_on_a_person():
-    target = FakeTarget(enriched_at=NOW, channel_note="apply through the form")
+def test_read_with_no_address_and_no_published_route_waits_on_a_person():
+    target = FakeTarget(enriched_at=NOW, channel_note="no route published")
     got, detail = stage(target=target, pages=4, facts=9)
     assert got == "needs_email"
-    assert detail == "apply through the form"
+    assert detail == "no route published"
+
+
+def test_a_fund_with_a_form_is_not_waiting_on_an_address():
+    """The form is the route. Demanding an email made four targets look
+    blocked when none of them were."""
+    target = FakeTarget(enriched_at=NOW, channel="form",
+                        channel_note="submit through the portal")
+    got, detail = stage(target=target, pages=6, facts=13)
+    assert got == "apply"
+    assert detail == "submit through the portal"
+
+
+def test_an_address_still_unlocks_drafting_for_a_form_target():
+    """You may want to ask something before filling the form in."""
+    target = FakeTarget(enriched_at=NOW, channel="form")
+    assert stage(target=target, pages=6, facts=13, has_email=True)[0] == "ready"
+
+
+def test_an_unqualified_target_falls_back_to_what_reading_found():
+    """channel_note is set during qualification, so it is empty here."""
+    target = FakeTarget(enriched_at=NOW,
+                        profile={"application": {"how_to_apply": "apply any time"}})
+    got, detail = stage(target=target, pages=4, facts=2)
+    assert got == "needs_email"
+    assert detail == "apply any time"
 
 
 def test_read_with_an_address_is_ready():
@@ -99,4 +128,4 @@ def test_pages_but_never_read_is_stalled_not_ready():
 def test_counts_group_the_stages_a_person_cares_about():
     rows = [{"stage": s} for s in
             ("queued", "working", "drafting", "ready", "failed", "drafted")]
-    assert counts(rows) == {"busy": 3, "ready": 1, "failed": 1}
+    assert counts(rows) == {"busy": 3, "ready": 1, "failed": 1, "apply": 0}

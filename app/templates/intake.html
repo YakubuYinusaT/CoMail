@@ -63,6 +63,8 @@
   Progress
   {% if counts.busy %}· <span class="mute">{{ counts.busy }} working</span>{% endif %}
   {% if counts.ready %}· <span class="mute">{{ counts.ready }} ready for you</span>{% endif %}
+  {% if counts.apply %}· <span class="mute">{{ counts.apply }} want a form, not an
+    email</span>{% endif %}
   {% if counts.failed %}· <span class="mute">{{ counts.failed }} stuck</span>{% endif %}
   {% if campaign %}· <span class="faint">drafts go to {{ campaign }}</span>{% endif %}
 </p>

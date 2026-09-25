@@ -19,13 +19,14 @@ from app.worker import ENRICH, GENERATE, LIVE
 # first because they are the only rows that are stuck.
 STAGE_ORDER = {
     "failed": 0, "working": 1, "queued": 2, "ready": 3,
-    "needs_email": 4, "drafting": 5, "drafted": 6, "stalled": 7,
+    "apply": 4, "needs_email": 5, "drafting": 6, "drafted": 7, "stalled": 8,
 }
 
 STAGE_LABEL = {
     "queued": "waiting to start",
     "working": "crawling and reading",
     "ready": "read, ready for you",
+    "apply": "apply through their form",
     "needs_email": "needs an address from you",
     "drafting": "writing the email",
     "drafted": "draft in the queue",
@@ -93,6 +94,7 @@ def board(limit: int = 60) -> list[dict]:
                 "score": scores.get(t.id),
                 "draft_id": str(draft.id) if draft else None,
                 "has_email": has_email,
+                "apply_url": apply_url(t),
                 # Only offer Draft once there is something to write from
                 # and nothing already in flight.
                 "can_draft": stage == "ready",
@@ -100,6 +102,24 @@ def board(limit: int = 60) -> list[dict]:
 
     rows.sort(key=lambda r: (STAGE_ORDER[r["stage"]], r["name"].lower()))
     return rows
+
+
+def _route_note(target) -> str | None:
+    """How the site says to approach them, in one line.
+
+    channel_note is set during qualification. A target that was never
+    qualified has none, so the application details found during reading
+    stand in rather than leaving the row silent about a form that exists.
+    """
+    if target.channel_note:
+        return target.channel_note
+    application = (target.profile or {}).get("application") or {}
+    return application.get("how_to_apply") or None
+
+
+def apply_url(target) -> str | None:
+    application = (target.profile or {}).get("application") or {}
+    return application.get("url") or None
 
 
 def _stage(target, pages: int, facts: int, has_email: bool,
@@ -123,9 +143,16 @@ def _stage(target, pages: int, facts: int, has_email: bool,
 
     if target.enriched_at is not None:
         if not has_email:
-            # Cohandle never invents an address, so this one waits on you.
-            # The channel note says what the site itself asks for.
-            return "needs_email", target.channel_note or None
+            # A fund that publishes a form is not waiting on an address.
+            # The form is the route, and an email is only worth having if
+            # you want to ask something before filling it in. Calling
+            # that "needs an address from you" made four targets look
+            # blocked when none of them were.
+            route = _route_note(target)
+            if target.channel in ("form", "intro"):
+                return "apply", route
+            # No published route, so an address is the only way in.
+            return "needs_email", route
         if not facts:
             # Worth saying out loud. A draft written from no facts cannot
             # cite anything about them, which is the one thing that makes
@@ -137,8 +164,9 @@ def _stage(target, pages: int, facts: int, has_email: bool,
     return "stalled", None
 
 
+
 def counts(rows: list[dict]) -> dict[str, int]:
-    out = {"busy": 0, "ready": 0, "failed": 0}
+    out = {"busy": 0, "ready": 0, "failed": 0, "apply": 0}
     for r in rows:
         if r["stage"] in ("queued", "working", "drafting"):
             out["busy"] += 1
@@ -146,4 +174,6 @@ def counts(rows: list[dict]) -> dict[str, int]:
             out["ready"] += 1
         elif r["stage"] == "failed":
             out["failed"] += 1
+        elif r["stage"] == "apply":
+            out["apply"] += 1
     return out
