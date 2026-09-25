@@ -13,6 +13,17 @@ OEM, DisCo and partner outreach without rework.
 
 ## Sending
 
+Zoho applies the signature configured in its web client to neither mail
+sent through the API nor drafts created through it. Both were tested and
+both arrived without it. So Cohandle carries the designed signature
+itself, which means the message is HTML.
+
+Only the signature is designed. The letter is paragraphs and nothing
+else: no fonts, no colours, no tables, no tracking. A first approach to
+an investor that arrives styled reads as a campaign, and this tool exists
+so that it does not. `HTML_EMAIL=false` falls back to the plain text
+signature, and so does a missing `signature.html`.
+
 `DELIVERY_MODE` decides what approving a draft does, and it is `draft`.
 
 In draft mode Cohandle writes the email into your Zoho **Drafts** folder

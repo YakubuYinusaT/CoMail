@@ -482,20 +482,25 @@ def cmd_testsend(args: argparse.Namespace) -> int:
         "if one is configured."
     )
 
-    # Carry whatever a real send would carry. A test that leaves the
-    # signature out is a test of a different email.
+    # Carry exactly what a real message carries, including whether it is
+    # HTML. A test of a different format is a test of a different email.
     from app.models import Campaign
-    from app.sending import signature
+    from app.html_mail import compose_html
+    from app.sending import as_html, html_signature, signature
 
     with session() as s:
         campaign = s.scalar(select(Campaign).order_by(Campaign.created_at.desc()))
         sign = signature(campaign)
-    if sign:
-        body += "\n\n" + sign
+    is_html = as_html()
+    if is_html:
+        body = compose_html(body, html_signature())
+    elif sign:
+        body = body + "\n\n" + sign
 
     print(f"sending one test message to {to}...")
     try:
-        data = zoho.send(to, f"Cohandle test message, {stamp}", body, to_self=True)
+        data = zoho.send(to, f"Cohandle test message, {stamp}", body,
+                         to_self=True, html=is_html)
     except Exception as exc:  # noqa: BLE001 - the reason is the whole point
         print(f"failed: {exc}")
         return 1

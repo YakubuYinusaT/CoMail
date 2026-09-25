@@ -270,3 +270,50 @@ def test_a_confirmed_draft_comes_back(monkeypatch):
                         lambda *a, **k: {"data": {"mode": "draft", "messageId": "9"}})
     monkeypatch.setattr(zoho, "_require", lambda *names: None)
     assert zoho.create_draft("someone@fund.com", "S", "B")["messageId"] == "9"
+
+
+# ----------------------------------------------------------------- html
+
+def test_html_body_escapes_what_a_person_typed():
+    from app.html_mail import body_to_html
+
+    out = body_to_html("Costs < $250k & rising")
+    assert "&lt;" in out and "&amp;" in out
+    assert "<script" not in out
+
+
+def test_paragraphs_survive_and_single_breaks_become_br():
+    from app.html_mail import body_to_html
+
+    out = body_to_html("One.\n\nTwo.\nStill two.")
+    assert out.count("<p ") == 2
+    assert "<br>" in out
+
+
+def test_the_designed_signature_replaces_the_text_one(monkeypatch):
+    """Two signatures read as a mistake, so HTML drops the plain one."""
+    monkeypatch.setattr(sending, "as_html", lambda: True)
+    monkeypatch.setattr(sending, "html_signature", lambda: "<table>designed</table>")
+    campaign = FakeCampaign({"signature": "Yinusa Yakubu Temitope"})
+    body, is_html = sending.message_body(FakeDraft("The email."), campaign)
+    assert is_html
+    assert "designed" in body
+    assert "Yinusa Yakubu Temitope" not in body
+
+
+def test_without_a_designed_signature_it_stays_plain(monkeypatch):
+    """A missing brand file must not silently drop the signature."""
+    monkeypatch.setattr(sending, "html_signature", lambda: "")
+    campaign = FakeCampaign({"signature": "Yinusa Yakubu Temitope"})
+    body, is_html = sending.message_body(FakeDraft("The email."), campaign)
+    assert not is_html
+    assert "Yinusa Yakubu Temitope" in body
+
+
+def test_the_explanatory_comment_is_not_mailed(tmp_path):
+    from app.html_mail import load_signature_html
+
+    file = tmp_path / "sig.html"
+    file.write_text("<!-- paste this into Zoho -->\n<table>real</table>",
+                    encoding="utf-8")
+    assert load_signature_html(file).startswith("<table>")

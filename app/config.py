@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # nobody, so it does not need arming.
     delivery_mode: str = Field(default="draft", alias="DELIVERY_MODE")
 
+    # Carry the designed signature, which means sending HTML. On by
+    # default because Zoho applies its own signature to neither sent mail
+    # nor API-created drafts, so otherwise it never reaches anybody. The
+    # letter itself stays unstyled either way.
+    html_email: bool = Field(default=True, alias="HTML_EMAIL")
+
     # Shared password for the review queue. Empty disables the login
     # entirely: correct locally, and correct in production once Identity
     # Aware Proxy is doing the checking instead. See app/auth.py.

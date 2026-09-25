@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 
 from app import zoho
+from app.html_mail import compose_html, load_signature_html
 from app.config import settings
 from app.db import session
 from app.models import Campaign, Contact, Draft, Send
@@ -134,8 +135,36 @@ def signature(campaign: Campaign | None) -> str:
 
 
 def full_body(draft: Draft, campaign: Campaign | None) -> str:
+    """The plain text version: the letter, then the text signature."""
     sign = signature(campaign)
     return f"{draft.body}\n\n{sign}\n" if sign else draft.body + "\n"
+
+def html_signature() -> str:
+    """The designed signature, read from the brand assets folder."""
+    return load_signature_html()
+
+
+def as_html() -> bool:
+    """True when messages carry the designed signature rather than text.
+
+    On by default now that we know Zoho applies its own signature to
+    neither sent mail nor drafts created through the API. Without this
+    the designed block never reaches anybody, however carefully it is
+    configured in the web client.
+    """
+    return settings().html_email and bool(html_signature())
+
+
+def message_body(draft: Draft, campaign: Campaign | None) -> tuple[str, bool]:
+    """The body to send, and whether it is HTML.
+
+    In HTML the text signature is left out: the designed one carries the
+    same details, and two signatures read as a mistake.
+    """
+    if as_html():
+        return compose_html(draft.body, html_signature()), True
+    return full_body(draft, campaign), False
+
 
 
 def queue(draft_id: str) -> str | None:
@@ -187,14 +216,14 @@ def dispatch_one(send_id: str, now: datetime | None = None) -> str:
 
         to = contact.email
         subject = draft.subject
-        body = full_body(draft, campaign)
+        body, is_html = message_body(draft, campaign)
 
     # Outside the session on purpose: an HTTP call must not hold a
     # database connection open, and the row above is already committed.
     to_drafts = drafting()
     try:
-        data = (zoho.create_draft(to, subject, body) if to_drafts
-                else zoho.send(to, subject, body))
+        data = (zoho.create_draft(to, subject, body, html=is_html) if to_drafts
+                else zoho.send(to, subject, body, html=is_html))
     except zoho.NotArmed as exc:
         with session() as s:
             s.get(Send, send_id).error = str(exc)
