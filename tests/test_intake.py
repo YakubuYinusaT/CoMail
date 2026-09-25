@@ -38,8 +38,8 @@ UNREAD = FakeTarget()
 
 
 def stage(target=UNREAD, pages=0, facts=0, has_email=False,
-          draft=None, enrich=None, generate=None):
-    return _stage(target, pages, facts, has_email, draft, enrich, generate)
+          draft=None, enrich=None, generate=None, reply=None):
+    return _stage(target, pages, facts, has_email, draft, enrich, generate, reply)
 
 
 def test_every_stage_has_a_label_and_a_place_in_the_order():
@@ -127,8 +127,15 @@ def test_pages_but_never_read_is_stalled_not_ready():
 
 def test_counts_group_the_stages_a_person_cares_about():
     rows = [{"stage": s} for s in
-            ("queued", "working", "drafting", "ready", "failed", "drafted")]
-    assert counts(rows) == {"busy": 3, "ready": 1, "failed": 1, "apply": 0}
+            ("queued", "working", "drafting", "ready", "failed", "drafted",
+             "apply", "intro", "replied")]
+    assert counts(rows) == {"busy": 3, "ready": 1, "failed": 1,
+                            "apply": 2, "replied": 1}
+
+
+def test_a_reply_outranks_every_other_stage():
+    """It is the only one meaning somebody is waiting on you."""
+    assert STAGE_ORDER["replied"] == min(STAGE_ORDER.values())
 
 
 def test_a_warm_intro_target_is_not_told_to_use_a_form():
@@ -150,3 +157,17 @@ def test_a_found_address_does_not_count_as_a_confirmed_one():
     target = FakeTarget(enriched_at=NOW, channel="form")
     assert stage(target=target, pages=6, facts=9, has_email=False)[0] == "apply"
     assert stage(target=target, pages=6, facts=9, has_email=True)[0] == "ready"
+
+
+@dataclass
+class FakeReply:
+    from_email: str = "partner@fund.com"
+    received_at: datetime | None = NOW
+
+
+def test_a_reply_beats_even_a_finished_draft():
+    """Somebody answered. Nothing else on the row matters more."""
+    got, detail = stage(target=READ, pages=6, facts=9, has_email=True,
+                        draft=object(), reply=FakeReply())
+    assert got == "replied"
+    assert "partner@fund.com" in detail

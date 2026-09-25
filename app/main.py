@@ -111,10 +111,18 @@ def require_internal(request: Request) -> None:
 def poll_replies(request: Request) -> JSONResponse:
     """Invoked on a schedule by the poller job.
 
-    Scans the Zoho inbox for replies to anything Cohandle sent and halts
-    further contact with those targets. Not implemented yet; the route
-    exists so the scheduler and its auth can be wired and tested before
-    the logic lands.
+    Scans the Zoho inbox for replies to anything Cohandle sent and
+    records them. A reply is what stops further contact with a target.
     """
     require_internal(request)
-    return JSONResponse({"status": "not_implemented", "checked": 0})
+    from app import replies
+
+    report = replies.run()
+    return JSONResponse({
+        "status": "ok",
+        "scanned": report.scanned,
+        "replies": report.replies,
+        "auto_replies": report.auto,
+        "bounced": report.bounced,
+        "note": report.note,
+    })

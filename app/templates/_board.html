@@ -16,7 +16,7 @@
           <span class="mono faint" style="display:block;font-size:var(--t-xs)">{{ r.domain }}</span>
         </td>
         <td>
-          <span class="tag {{ 'bad' if r.stage == 'failed'
+          <span class="tag {{ 'bad' if r.stage in ('failed', 'replied')
                               else 'good' if r.stage in ('ready', 'drafted', 'apply')
                               else 'plain' if r.stage == 'intro'
                               else 'warn' if r.stage == 'stalled' else 'plain' }}">

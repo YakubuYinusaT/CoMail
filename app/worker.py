@@ -189,6 +189,19 @@ def sweep_reconcile() -> None:
     if report.matched:
         log.info("reconcile: %s", report)
 
+    # Replies ride on the same beat. Both are reads of the same mailbox,
+    # and knowing a fund answered matters far more than the ten minutes
+    # it might wait.
+    from app import replies
+
+    try:
+        answered = replies.run()
+    except Exception:  # noqa: BLE001 - same reasoning
+        log.debug("reply poll failed", exc_info=True)
+        return
+    if answered.replies or answered.bounced:
+        log.info("replies: %s", answered)
+
 
 def claim() -> tuple[uuid.UUID, str, dict] | None:
     """Take the oldest ready job. Returns plain values, not a live row.

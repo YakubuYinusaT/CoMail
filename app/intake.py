@@ -12,21 +12,25 @@ from __future__ import annotations
 from sqlalchemy import func, select
 
 from app.db import session
-from app.models import Assessment, Contact, Draft, Fact, Job, Page, Target
+from app.models import (Assessment, Contact, Draft, Fact, Job, Page, Reply,
+                        Target)
 from app.worker import ENRICH, GENERATE, LIVE
 
 # Order the board by what needs a person, not alphabetically. Failures
 # first because they are the only rows that are stuck.
 STAGE_ORDER = {
-    "failed": 0, "working": 1, "queued": 2, "ready": 3,
-    "apply": 4, "intro": 5, "needs_email": 6,
-    "drafting": 7, "drafted": 8, "stalled": 9,
+    # A reply outranks everything. It is the only stage that means
+    # somebody is waiting on you rather than the other way round.
+    "replied": 0, "failed": 1, "working": 2, "queued": 3, "ready": 4,
+    "apply": 5, "intro": 6, "needs_email": 7,
+    "drafting": 8, "drafted": 9, "stalled": 10,
 }
 
 STAGE_LABEL = {
     "queued": "waiting to start",
     "working": "crawling and reading",
     "ready": "read, ready for you",
+    "replied": "they replied to you",
     "apply": "apply through their form",
     "intro": "wants a warm introduction",
     "needs_email": "needs an address from you",
@@ -81,6 +85,13 @@ def board(limit: int = 60) -> list[dict]:
         scores = {a.target_id: a.score for a in s.scalars(
             select(Assessment).where(Assessment.target_id.in_(ids))
             .order_by(Assessment.created_at))}
+        # A real reply only. An out of office is a machine saying nobody
+        # is reading, which is not the same as being answered.
+        answers = {r.target_id: r for r in s.scalars(
+            select(Reply).where(Reply.target_id.in_(ids),
+                                Reply.is_auto_reply.is_(False))
+            .order_by(Reply.received_at))}
+
         jobs: dict[tuple[str, str], Job] = {}
         for job in s.scalars(select(Job).where(Job.kind.in_([ENRICH, GENERATE]))
                              .order_by(Job.created_at)):
@@ -96,7 +107,8 @@ def board(limit: int = 60) -> list[dict]:
             draft = drafts.get(t.id)
             stage, detail = _stage(t, n_pages, n_facts, has_email, draft,
                                    jobs.get((ENRICH, t.domain)),
-                                   jobs.get((GENERATE, t.domain)))
+                                   jobs.get((GENERATE, t.domain)),
+                                   answers.get(t.id))
             rows.append({
                 "domain": t.domain,
                 "name": t.name or t.domain,
@@ -141,7 +153,10 @@ def apply_url(target) -> str | None:
 
 
 def _stage(target, pages: int, facts: int, has_email: bool,
-           draft, enrich, generate) -> tuple[str, str | None]:
+           draft, enrich, generate, reply=None) -> tuple[str, str | None]:
+    if reply is not None:
+        when = reply.received_at.strftime("%d %b") if reply.received_at else ""
+        return "replied", f"{reply.from_email} wrote back{f' on {when}' if when else ''}"
     if generate is not None and generate.state in LIVE:
         return "drafting", None
     if draft is not None:
@@ -189,7 +204,7 @@ def _stage(target, pages: int, facts: int, has_email: bool,
 
 
 def counts(rows: list[dict]) -> dict[str, int]:
-    out = {"busy": 0, "ready": 0, "failed": 0, "apply": 0}
+    out = {"busy": 0, "ready": 0, "failed": 0, "apply": 0, "replied": 0}
     for r in rows:
         if r["stage"] in ("queued", "working", "drafting"):
             out["busy"] += 1
@@ -199,4 +214,6 @@ def counts(rows: list[dict]) -> dict[str, int]:
             out["failed"] += 1
         elif r["stage"] in ("apply", "intro"):
             out["apply"] += 1
+        elif r["stage"] == "replied":
+            out["replied"] += 1
     return out

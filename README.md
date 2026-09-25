@@ -98,6 +98,37 @@ sending.
 python -m app.cli sends
 ```
 
+## Noticing when somebody writes back
+
+A follow-up sent to a fund that already replied undoes the one thing that
+went right, and reads as though nobody was paying attention. So the
+signal that stops it exists before follow-ups do.
+
+Matching is on the sender, not on a thread. Zoho's headers carry no
+thread id, and a reply often comes from a different person at the same
+fund: you write to hello@fund.com and a partner answers from their own
+address. So inbound counts as a reply when the sender is an address held
+for that target, or the sender's domain is the target's domain, and it
+arrived after the send.
+
+Three kinds of inbound are told apart, because confusing them is wrong in
+three different ways. A reply is a person and stops everything. An
+automatic reply is a machine saying nobody is reading, and must not be
+mistaken for interest. A bounce means the address is wrong and nothing
+arrived, so the target has not been contacted at all, and the send is
+marked bounced rather than sent.
+
+Every folder inbound can land in is scanned, not just the Inbox. Filters
+sort mail into others, and a reply put in Newsletter by a rule is still a
+reply. Spam is included for the same reason: a missed reply there is the
+expensive kind of miss.
+
+A target that replied sorts above everything else on the Add screen,
+because it is the only state meaning somebody is waiting on you.
+
+Nothing reads a message body. The snippet Zoho puts in the header is
+enough to recognise what arrived.
+
 ## Knowing what you actually sent
 
 Cohandle writes a draft into Zoho and then loses sight of it. You might

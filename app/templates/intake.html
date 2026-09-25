@@ -61,6 +61,7 @@
 
 <p class="eyebrow" style="margin-top:var(--s6)">
   Progress
+  {% if counts.replied %}· <strong>{{ counts.replied }} replied to you</strong>{% endif %}
   {% if counts.busy %}· <span class="mute">{{ counts.busy }} working</span>{% endif %}
   {% if counts.ready %}· <span class="mute">{{ counts.ready }} ready for you</span>{% endif %}
   {% if counts.apply %}· <span class="mute">{{ counts.apply }} want a form, not an
