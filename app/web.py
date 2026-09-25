@@ -347,6 +347,25 @@ def intake_contact(domain: str = Form(...), email: str = Form("")):
     return RedirectResponse("/intake", status_code=303)
 
 
+@router.post("/intake/confirm")
+def intake_confirm(domain: str = Form(...), email: str = Form(...)):
+    """Mark an address found on their site as one you have checked.
+
+    Finding is done by pattern match over the crawled page, so the
+    address is certainly printed somewhere on the site. Whether anybody
+    reads it is a separate question, and this is a person answering it.
+    """
+    address = email.strip().lower()
+    with session() as s:
+        target = s.scalar(select(Target).where(Target.domain == domain))
+        if target is not None and address:
+            contact = s.scalar(select(Contact).where(
+                Contact.target_id == target.id, Contact.email == address))
+            if contact is not None:
+                contact.verified = True
+    return RedirectResponse("/intake", status_code=303)
+
+
 @router.post("/intake/draft")
 def intake_draft(domain: str = Form(...)):
     """The step intake deliberately does not take by itself."""

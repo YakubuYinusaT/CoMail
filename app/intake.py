@@ -59,7 +59,20 @@ def board(limit: int = 60) -> list[dict]:
 
         pages = tally(Page)
         facts = tally(Fact)
-        emails = tally(Contact, Contact.email.is_not(None))
+
+        # Confirmed and found are different things. An address printed on
+        # a fund's website is a lead; it does not mean somebody reads it,
+        # and it must not move a target along as though a person had
+        # checked it.
+        confirmed: dict = {}
+        found: dict[object, list[Contact]] = {}
+        for contact in s.scalars(select(Contact).where(
+                Contact.target_id.in_(ids), Contact.email.is_not(None))
+                .order_by(Contact.created_at)):
+            if contact.verified:
+                confirmed[contact.target_id] = confirmed.get(contact.target_id, 0) + 1
+            else:
+                found.setdefault(contact.target_id, []).append(contact)
 
         # Oldest first so the newest wins the key, for all three of these.
         drafts = {d.target_id: d for d in s.scalars(
@@ -79,7 +92,7 @@ def board(limit: int = 60) -> list[dict]:
         for t in targets:
             n_pages = pages.get(t.id, 0)
             n_facts = facts.get(t.id, 0)
-            has_email = bool(emails.get(t.id, 0))
+            has_email = bool(confirmed.get(t.id, 0))
             draft = drafts.get(t.id)
             stage, detail = _stage(t, n_pages, n_facts, has_email, draft,
                                    jobs.get((ENRICH, t.domain)),
@@ -97,6 +110,9 @@ def board(limit: int = 60) -> list[dict]:
                 "draft_id": str(draft.id) if draft else None,
                 "has_email": has_email,
                 "apply_url": apply_url(t),
+                # Printed on their site, waiting for you to say it is real.
+                "found_emails": [{"email": c.email, "source": c.source_url}
+                                 for c in found.get(t.id, [])],
                 # Only offer Draft once there is something to write from
                 # and nothing already in flight.
                 "can_draft": stage == "ready",

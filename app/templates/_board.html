@@ -42,6 +42,19 @@
                For a fund that publishes a form the form is the route, so
                the link leads and the address is offered, not demanded. #}
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+              {# Printed on their site. Certainly there, not certainly read
+                 by anybody, so it waits for you rather than counting. #}
+              {% for f in r.found_emails %}
+                <form method="post" action="/intake/confirm"
+                      style="margin:0;display:flex;gap:var(--s2);align-items:center">
+                  <input type="hidden" name="domain" value="{{ r.domain }}">
+                  <input type="hidden" name="email" value="{{ f.email }}">
+                  <a href="{{ f.source }}" target="_blank" rel="noopener"
+                     class="mono faint" style="font-size:var(--t-xs)">found on their site</a>
+                  <span class="mono" style="font-size:var(--t-sm)">{{ f.email }}</span>
+                  <button type="submit">Use this</button>
+                </form>
+              {% endfor %}
               {% if r.stage == 'apply' and r.apply_url %}
                 <a href="{{ r.apply_url }}" target="_blank" rel="noopener"
                    class="mono" style="font-size:var(--t-sm)">Open their form &rarr;</a>

@@ -139,3 +139,14 @@ def test_a_warm_intro_target_is_not_told_to_use_a_form():
     got, detail = stage(target=target, pages=4, facts=6)
     assert got == "intro"
     assert "form" not in STAGE_LABEL["intro"]
+
+
+def test_a_found_address_does_not_count_as_a_confirmed_one():
+    """An address printed on a fund's website is a lead, not a decision.
+
+    has_email drives the stage, so counting an unconfirmed finding would
+    move a target along as though somebody had checked it.
+    """
+    target = FakeTarget(enriched_at=NOW, channel="form")
+    assert stage(target=target, pages=6, facts=9, has_email=False)[0] == "apply"
+    assert stage(target=target, pages=6, facts=9, has_email=True)[0] == "ready"

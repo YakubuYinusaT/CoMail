@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
@@ -22,9 +22,10 @@ import trafilatura
 from selectolax.parser import HTMLParser
 from sqlalchemy import select
 
+from app import harvest
 from app.config import settings
 from app.db import session
-from app.models import Page, Target
+from app.models import Contact, Page, Target
 
 USER_AGENT = (
     "Mozilla/5.0 (compatible; Cohandle/1.0; +https://ciit.africa) research crawler"
@@ -73,11 +74,15 @@ class CrawlReport:
     needs_render: int = 0
     errors: list[str] | None = None
     blocked_by_robots: bool = False
+    # Addresses printed on the site, for a person to confirm.
+    emails: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
         if self.blocked_by_robots:
             return f"{self.domain}: blocked by robots.txt"
         bits = [f"{self.domain}: {self.pages} pages, {self.chars:,} chars"]
+        if self.emails:
+            bits.append(f"{len(self.emails)} address(es) found")
         if self.needs_render:
             bits.append(f"{self.needs_render} need rendering")
         if self.errors:
@@ -258,6 +263,20 @@ async def crawl_domain(domain: str) -> CrawlReport:
             report.pages += 1
             report.chars += len(text)
             report.needs_render += int(needs_render)
+
+            # Addresses printed on the page, kept as findings. Matched
+            # out of the bytes that were served, never asked of a model,
+            # so an address that is not on the page cannot appear here.
+            # Unverified on purpose: a pattern match cannot tell you
+            # whether info@ reaches a person.
+            for address in harvest.find(got.html, text):
+                known = s.scalar(select(Contact).where(
+                    Contact.target_id == target.id, Contact.email == address))
+                if known is not None:
+                    continue
+                s.add(Contact(target_id=target.id, email=address,
+                              verified=False, source_url=got.url))
+                report.emails.append(address)
 
     return report
 

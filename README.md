@@ -98,6 +98,28 @@ sending.
 python -m app.cli sends
 ```
 
+## Addresses
+
+Cohandle once asked the model for email addresses and it produced five,
+plausible and wrong, for real named staff at a real fund. The field was
+removed, and every address came from the operator by hand.
+
+Finding is back; inventing is not. Addresses are matched out of the
+crawled page with a regular expression, in both the markup and the
+extracted text, so a `mailto:` link and a printed address are both found
+and an address that is not on the page cannot be produced. Each one is
+stored against the page it appeared on.
+
+A found address is marked unverified and does not move a target along. A
+pattern match proves the characters were on the page, not that anybody
+reads what arrives there, so the row shows the address with a link to
+where it was found and waits for you to press Use this.
+
+The noise filtering matters as much as the finding. `logo@2x.png` reads
+as an address, so do a site builder's telemetry addresses and the
+placeholders in template markup. A panel that lists those is a panel
+that gets ignored.
+
 ## The two directions a draft can lie
 
 Claims about the **recipient** are checked against the pages Cohandle
