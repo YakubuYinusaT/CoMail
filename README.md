@@ -17,9 +17,12 @@ Nothing leaves until `SEND_ENABLED=true`. Credentials are not permission:
 with a working Zoho token and that flag false, Cohandle does every step
 up to the API call and records what it would have sent.
 
-Set Zoho up in one sitting:
+Set Zoho up in one sitting by double-clicking `zoho-setup.cmd` in the
+CoHandle folder. It runs from its own folder, so it does not matter
+where you start it from. From a terminal, be inside the project first:
 
 ```bash
+cd "C:/Users/USER/Documents/Connected Intelligence/CoHandle"
 python scripts/zoho_setup.py
 ```
 

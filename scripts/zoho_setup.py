@@ -1,5 +1,10 @@
 """Set Zoho up in one sitting.
 
+Double-click zoho-setup.cmd in the CoHandle folder. It runs from its own
+folder, so it works wherever you start it. Running this file by hand only
+works if you are already inside the project:
+
+    cd "C:/Users/USER/Documents/Connected Intelligence/CoHandle"
     python scripts/zoho_setup.py
 
 Zoho needs four things from you and works out a fifth for itself. This
