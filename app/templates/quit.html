@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Stopped — Cohandle{% endblock %}
+{% block body %}
+<div style="max-width:420px;margin:14vh auto 0;text-align:center">
+  <h1 style="margin-bottom:var(--s3)">Cohandle is stopped</h1>
+  <p class="lede">Nothing is running and nothing is listening. You can close
+    this window. Open it again from the Start Menu whenever you want it back.</p>
+</div>
+<script>
+  // The server is on its way down, so the polling in base.html would only
+  // produce failed requests from here on.
+  window.setTimeout(function () { window.close(); }, 2500);
+</script>
+{% endblock %}

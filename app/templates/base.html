@@ -264,6 +264,12 @@ dialog td { padding: 5px 0; border: 0; }
     <button class="ghost" type="submit">Sign out</button>
   </form>
   {% endif %}
+  {% if desktop_mode() and nav != 'quit' %}
+  {# Running windowed there is no console, so this is the way out. #}
+  <form method="post" action="/quit" style="margin:0">
+    <button class="ghost" type="submit">Quit</button>
+  </form>
+  {% endif %}
 </header>
 
 <main>{% block body %}{% endblock %}</main>

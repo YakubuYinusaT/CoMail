@@ -10,10 +10,11 @@ facts sitting beside the draft, not the widgets.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -221,6 +222,30 @@ def _intake_context(request: Request, result=None) -> dict:
         "kinds": KINDS, "result": result,
         "campaign": campaign.name if campaign else None,
     }
+
+
+def desktop_mode() -> bool:
+    """True when this process was started by the desktop launcher."""
+    return os.environ.get("COHANDLE_LOOPBACK") == "1"
+
+
+templates.env.globals["desktop_mode"] = desktop_mode
+
+
+@router.post("/quit")
+def quit_app(request: Request):
+    """Stop the server from inside the app.
+
+    The windowed launcher has no console, so there is nothing to Ctrl+C.
+    Refuses to exist anywhere but loopback: on a deployed service this
+    would be an unauthenticated way to take the thing down.
+    """
+    if not desktop_mode():
+        raise HTTPException(status_code=404)
+    server = getattr(request.app.state, "server", None)
+    if server is not None:
+        server.should_exit = True
+    return templates.TemplateResponse(request, "quit.html", {"nav": "quit"})
 
 
 @router.get("/intake", response_class=HTMLResponse)

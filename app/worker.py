@@ -29,12 +29,14 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
-from app.crawl import crawl_domain
 from app.db import session
-from app.extract import extract_target
-from app.generate import generate_campaign
 from app.models import Assessment, Contact, Job, Target
-from app.qualify import qualify_campaign
+
+# crawl, extract, generate and qualify are imported inside the handlers
+# below, not here. Between them they pull in trafilatura, which takes
+# seven seconds to import and is not needed until a job actually runs.
+# The web app imports this module at startup, and on a laptop that seven
+# seconds is the difference between double-clicking and seeing a window.
 
 log = logging.getLogger("cohandle.worker")
 
@@ -181,6 +183,9 @@ def finish(job_id: uuid.UUID, error: str | None = None, *, permanent: bool = Fal
 
 
 async def _run_enrich(domain: str) -> None:
+    from app.crawl import crawl_domain
+    from app.extract import extract_target
+
     report = await crawl_domain(domain)
     if report.blocked_by_robots:
         raise RuntimeError("robots.txt forbids crawling this site")
@@ -193,6 +198,9 @@ async def _run_enrich(domain: str) -> None:
 
 
 def _qualify_then_generate(domain: str, campaign: str) -> None:
+    from app.generate import generate_campaign
+    from app.qualify import qualify_campaign
+
     qualify_campaign(campaign, only=[domain])
     report = generate_campaign(campaign, only=[domain])
     if report.written:

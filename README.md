@@ -51,20 +51,32 @@ are in [`deploy/CLOUDRUN.md`](deploy/CLOUDRUN.md).
 
 ### On your own machine, which costs nothing to host
 
-Double-click `run-cohandle.cmd`. It starts the server, waits until it is
-answering, and opens the queue in your browser. Close the window to stop
-it. The intake worker runs the whole time the window is open, which is
-the only thing the Cloud Run deploy was buying.
-
-It listens on 127.0.0.1 and nothing else, so an app with no login is not
-also on the office network.
-
-First time only:
+Install it once:
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env     # then fill in DATABASE_URL and a model key
+powershell -ExecutionPolicy Bypass -File scripts\install-shortcut.ps1
 ```
+
+That puts Cohandle on your Desktop and in the Start Menu. Double-click
+it: no console, no command line, a chromeless window that looks like an
+application. Stop it from the Quit button in its own header, which is
+there because with no console there is nothing to Ctrl+C.
+
+Clicking the shortcut again while it is running brings the window back
+rather than starting a second copy.
+
+`run-cohandle.cmd` is the same thing with a console attached, for when
+something is wrong and you want to watch it. In windowed mode anything
+that goes wrong lands in `cohandle-desktop.log` and, if it is fatal, in a
+message box.
+
+The intake worker runs the whole time it is open, which is the only thing
+the Cloud Run deploy was buying.
+
+It listens on 127.0.0.1 and nothing else, so an app with no login is not
+also on the office network.
 
 The only thing that still costs money this way is the model: extraction
 and generation are API calls whether Cohandle runs in Frankfurt or on

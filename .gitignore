@@ -21,3 +21,6 @@ requirements.lock.txt
 
 # alembic
 alembic/README
+
+# Written by the desktop launcher when it runs without a console.
+cohandle-desktop.log
