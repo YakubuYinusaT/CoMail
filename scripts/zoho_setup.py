@@ -125,10 +125,28 @@ def main() -> int:
         return 0
 
     region = pick_region()
-    print("\nThe next three are hidden as you type or paste them.\n")
-    client_id = ask("Client ID")
-    client_secret = ask("Client Secret")
-    code = ask("Generated code")
+    print("\nThree values now, one at a time. Nothing is shown as you paste,")
+    print("so the prompt will look like it is ignoring you. It is not.")
+
+    print("\n1 of 3. The Client ID, from the Client Secret tab of the API")
+    print("        console. It begins with 1000. and does not expire.")
+    client_id = ask("   Client ID")
+
+    print("\n2 of 3. The Client Secret, on that same tab. A long run of")
+    print("        letters and numbers with no 1000. in front of it.")
+    client_secret = ask("   Client Secret")
+
+    print("\n3 of 3. The code from the Generate Code tab, the one you made")
+    print("        a moment ago. It also begins with 1000., which is why it")
+    print("        is easy to confuse with the Client ID. This is the one")
+    print("        that expires within a few minutes.")
+    code = ask("   Generated code")
+
+    if code == client_id:
+        print("\nThose two are the same value, so one of them is wrong.")
+        print("The Client ID is on the Client Secret tab. The code is on the")
+        print("Generate Code tab. Start again when you have both.")
+        return 1
 
     print("\nTrading the code for a refresh token...")
     refresh = exchange(region, client_id, client_secret, code)
