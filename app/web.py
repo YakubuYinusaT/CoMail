@@ -25,7 +25,7 @@ from app.db import session
 from app.ingest import ingest
 from app.intake import board, counts
 from app.models import (Assessment, Campaign, Contact, Draft, DraftFact, Fact,
-                        Page, Send, Target)
+                        Page, Reply, Send, Target)
 from app.house_style import find as find_slop
 from app.qualify import email_advice
 from app.sending import drafting, may_send, queue as queue_send, signature
@@ -429,6 +429,50 @@ def targets(request: Request):
     rows.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0)))
     return templates.TemplateResponse(request, "targets.html",
                                       {"rows": rows, "nav": "targets"})
+
+
+@router.get("/target/{domain}", response_class=HTMLResponse)
+def target_detail(request: Request, domain: str):
+    """Everything Cohandle knows about one target.
+
+    The Targets table reported "13 facts" with nowhere to go and see
+    them, and a row was only clickable once it had a draft, so a target
+    that had been read but not drafted was a dead end. This is the
+    destination that was missing.
+    """
+    with session() as s:
+        t = s.scalar(select(Target).where(Target.domain == domain))
+        if t is None:
+            return RedirectResponse("/targets", status_code=303)
+
+        assessment = s.scalar(select(Assessment).where(
+            Assessment.target_id == t.id).order_by(Assessment.created_at))
+        draft = s.scalar(select(Draft).where(Draft.target_id == t.id)
+                         .order_by(Draft.created_at))
+        reply = s.scalar(select(Reply).where(Reply.target_id == t.id)
+                         .order_by(Reply.received_at.desc()))
+        send = s.scalar(select(Send).where(Send.draft_id == draft.id)) if draft else None
+
+        contacts = list(s.scalars(select(Contact).where(
+            Contact.target_id == t.id, Contact.email.is_not(None))
+            .order_by(Contact.created_at)))
+        facts = list(s.scalars(select(Fact).where(Fact.target_id == t.id)
+                               .order_by(Fact.kind)))
+        pages = list(s.scalars(select(Page).where(Page.target_id == t.id)
+                               .order_by(Page.kind)))
+
+        profile = t.profile or {}
+        return templates.TemplateResponse(request, "target.html", {
+            "nav": "targets", "t": t, "profile": profile,
+            "application": profile.get("application") or {},
+            "observations": profile.get("observations") or [],
+            "score": assessment.score if assessment else None,
+            "verdict": assessment.verdict if assessment else None,
+            "criteria": (assessment.reasons or {}).get("criteria") if assessment else None,
+            "rejection": (assessment.reasons or {}).get("rejection_reason") if assessment else None,
+            "facts": facts, "pages": pages, "contacts": contacts,
+            "draft": draft, "send": send, "reply": reply,
+        })
 
 
 @router.get("/apply", response_class=HTMLResponse)

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}{{ t.name or t.domain }} — Cohandle{% endblock %}
+{% block body %}
+<p class="eyebrow"><a href="/targets" id="backlink" style="color:inherit;text-decoration:none">&larr; Targets</a>
+   <span class="faint">&nbsp;<kbd>u</kbd></span></p>
+
+<h1>{{ t.name or t.domain }}</h1>
+<p class="lede">
+  <a href="https://{{ t.domain }}" target="_blank" rel="noopener" class="mono">{{ t.domain }}</a>
+  <span class="tag plain">{{ t.kind }}</span>
+  {% if score is not none %} · fit <strong class="mono">{{ score }}</strong>{% endif %}
+  {% if verdict == 'qualified' %} <span class="tag good">qualified</span>
+  {% elif verdict == 'needs_review' %} <span class="tag warn">needs review</span>
+  {% elif verdict %} <span class="tag bad">{{ verdict }}</span>{% endif %}
+  {% if t.channel %} · route <span class="tag plain">{{ t.channel }}</span>{% endif %}
+</p>
+
+{% if reply %}
+<div class="note" style="border-left-color:var(--bad)">
+  <div><strong>{{ reply.from_email }} wrote back{% if reply.received_at %}
+    on {{ reply.received_at.strftime('%d %B') }}{% endif %}.</strong>
+    {% if reply.is_auto_reply %}It looks like an automatic reply.{% endif %}
+    {% if reply.snippet %}<div class="mute" style="margin-top:var(--s2)">{{ reply.snippet }}</div>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if rejection %}
+<div class="note" style="border-left-color:var(--warn)">
+  <div><strong>Not a fit.</strong> {{ rejection }}</div>
+</div>
+{% endif %}
+
+<div class="work">
+  <div>
+    {# What the site says about approaching them. The first thing you
+       want when deciding what to do with a target. #}
+    {% if application.url or application.how_to_apply or t.channel_note %}
+    <div class="card">
+      <p class="eyebrow">How they want to be approached</p>
+      {% if application.status %}
+        <span class="tag {{ 'bad' if application.status == 'closed' else 'good' }}">{{ application.status }}</span>
+      {% endif %}
+      {% if application.deadline %}<span class="tag plain">{{ application.deadline }}</span>{% endif %}
+      {% if application.url %}
+        <p style="margin:var(--s3) 0 0">
+          <a href="{{ application.url }}" target="_blank" rel="noopener" class="mono"
+             style="font-size:var(--t-sm)">{{ application.url }}</a></p>
+      {% endif %}
+      {% if application.how_to_apply %}
+        <p class="mute" style="margin:var(--s2) 0 0;font-size:var(--t-md)">{{ application.how_to_apply }}</p>
+      {% endif %}
+      {% if application.asks_for %}
+        <p style="margin:var(--s2) 0 0;font-size:var(--t-md)">
+          <span class="faint">Bring</span> {{ application.asks_for|join(', ') }}</p>
+      {% endif %}
+      {% if application.notes %}
+        <p class="mute" style="margin:var(--s2) 0 0;font-size:var(--t-md)">{{ application.notes }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <p class="eyebrow" style="margin-top:var(--s5)">
+      What was found · {{ facts|length }} fact{{ '' if facts|length == 1 else 's' }}</p>
+    <p class="faint" style="font-size:var(--t-sm);margin:0 0 var(--s3)">
+      Every one carries the page it came from. Open a link to check it.</p>
+    {% for f in facts %}
+      <div class="fact">
+        {{ f.claim }}
+        {% if f.confidence != 'verified' %}
+          <span class="tag warn" style="margin-left:4px">inferred, not quotable</span>
+        {% endif %}
+        <a class="src" href="{{ f.source_url }}" target="_blank" rel="noopener">{{ f.source_url }}</a>
+      </div>
+    {% else %}
+      <div class="card"><span class="mute">Nothing quotable was found on the site.
+        A draft written from this could not cite anything about them.</span></div>
+    {% endfor %}
+
+    {% if observations %}
+    <div class="card" style="margin-top:var(--s4)">
+      <p class="eyebrow">Observations · uncited, never quoted</p>
+      {% for o in observations %}
+        <p class="mute" style="margin:0 0 var(--s2);font-size:var(--t-md)">{{ o }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="rail">
+    <div class="card">
+      <p class="eyebrow">Addresses</p>
+      {% for c in contacts %}
+        <div style="margin-bottom:var(--s3);font-size:var(--t-md)">
+          <span class="mono">{{ c.email }}</span>
+          {% if c.verified %}<span class="tag good">confirmed</span>
+          {% else %}<span class="tag warn">found, unconfirmed</span>{% endif %}
+          <a class="src" href="{{ c.source_url }}" target="_blank" rel="noopener">{{ c.source_url }}</a>
+          {% if not c.verified %}
+            <form method="post" action="/intake/confirm" style="margin:6px 0 0">
+              <input type="hidden" name="domain" value="{{ t.domain }}">
+              <input type="hidden" name="email" value="{{ c.email }}">
+              <button type="submit">Use this</button>
+            </form>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="mute" style="margin:0;font-size:var(--t-md)">None. Cohandle will not
+          invent one, so this waits on you.</p>
+      {% endfor %}
+      <form method="post" action="/intake/contact"
+            style="margin:var(--s3) 0 0;display:flex;gap:var(--s2)">
+        <input type="hidden" name="domain" value="{{ t.domain }}">
+        <input type="text" name="email" inputmode="email" placeholder="add an address"
+               style="padding:6px var(--s2);font-size:var(--t-sm)">
+        <button type="submit">Add</button>
+      </form>
+    </div>
+
+    {% if criteria %}
+    <div class="card">
+      <p class="eyebrow">Why it scored {{ score }}</p>
+      {% for c in criteria %}
+        <div style="display:flex;gap:var(--s3);align-items:baseline;margin-bottom:6px;font-size:var(--t-md)">
+          <span class="faint" style="width:66px;flex:none">{{ c.name }}</span>
+          <span class="mono" style="width:44px;flex:none">{{ c.points }}/{{ c.max }}</span>
+          <span class="mute">{{ c.note }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <p class="eyebrow">The email</p>
+      {% if draft %}
+        <p style="margin:0 0 var(--s2);font-size:var(--t-md)">
+          <a href="/draft/{{ draft.id }}">Open the draft</a>
+          <span class="tag plain">{{ draft.status }}</span></p>
+        {% if send %}
+          <p class="mute" style="margin:0;font-size:var(--t-md)">
+            {% if send.state == 'drafted' %}Waiting in your Zoho drafts.
+            {% elif send.state == 'sent' %}Sent{% if send.sent_at %}
+              on {{ send.sent_at.strftime('%d %B, %H:%M') }}{% endif %}.
+            {% else %}{{ send.state }}{% if send.error %}: {{ send.error }}{% endif %}
+            {% endif %}</p>
+        {% endif %}
+      {% elif t.enriched_at and contacts|selectattr('verified')|list %}
+        <form method="post" action="/intake/draft" style="margin:0">
+          <input type="hidden" name="domain" value="{{ t.domain }}">
+          <button class="primary" type="submit">Draft an email</button>
+        </form>
+      {% else %}
+        <p class="mute" style="margin:0;font-size:var(--t-md)">Nothing drafted.
+          {% if not t.enriched_at %}This target has not been read yet.
+          {% else %}Confirm an address first.{% endif %}</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <p class="eyebrow">Pages read · {{ pages|length }}</p>
+      {% for p in pages %}
+        <div style="display:flex;gap:var(--s2);align-items:baseline;margin-bottom:6px;font-size:var(--t-sm)">
+          <span class="faint" style="width:62px;flex:none">{{ p.kind }}</span>
+          <span class="mono faint" style="width:56px;flex:none">{{ '{:,}'.format(p.text_chars) }}</span>
+          <a href="{{ p.url }}" target="_blank" rel="noopener" class="mono"
+             style="overflow:hidden;text-overflow:ellipsis">{{ p.url }}</a>
+        </div>
+        {% if p.needs_render %}
+          <p class="mute" style="margin:-2px 0 var(--s2) 62px;font-size:var(--t-xs)">
+            almost no text without a browser</p>
+        {% endif %}
+      {% else %}
+        <p class="mute" style="margin:0;font-size:var(--t-md)">Not crawled yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

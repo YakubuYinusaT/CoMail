@@ -210,8 +210,10 @@ paste an address Cohandle will not invent and press Draft. **Review**
 sourced facts beside them.
 
 Right of the rule is reference, not step three and four. **Targets**
-(`/targets`) is everything known, for answering what happened to
-something. **Apply & intro** (`/apply`) is the targets where email is the
+(`/targets`) is everything known, and every row opens
+`/target/<domain>`: the facts with the page each came from, the scoring
+broken down criterion by criterion, the addresses and where they were
+found, the pages crawled, and whatever has happened to the email. **Apply & intro** (`/apply`) is the targets where email is the
 wrong move because the fund publishes a form, which is work you do by
 hand on somebody else's website.
 

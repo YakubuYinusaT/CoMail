@@ -12,7 +12,8 @@
     {% for r in rows %}
       <tr>
         <td>
-          <strong>{{ r.name }}</strong>
+          <a href="/target/{{ r.domain }}" style="color:inherit;text-decoration:none">
+            <strong>{{ r.name }}</strong></a>
           <span class="mono faint" style="display:block;font-size:var(--t-xs)">{{ r.domain }}</span>
         </td>
         <td>
