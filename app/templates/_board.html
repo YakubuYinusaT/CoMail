@@ -18,6 +18,7 @@
         <td>
           <span class="tag {{ 'bad' if r.stage == 'failed'
                               else 'good' if r.stage in ('ready', 'drafted', 'apply')
+                              else 'plain' if r.stage == 'intro'
                               else 'warn' if r.stage == 'stalled' else 'plain' }}">
             {{ r.label }}</span>
           {% if r.stage in ('queued', 'working', 'drafting') %}<span class="spin"></span>{% endif %}
@@ -36,7 +37,7 @@
               <input type="hidden" name="domain" value="{{ r.domain }}">
               <button type="submit">Draft</button>
             </form>
-          {% elif r.stage in ('needs_email', 'apply') %}
+          {% elif r.stage in ('needs_email', 'apply', 'intro') %}
             {# Cohandle will not invent an address. This is where yours goes.
                For a fund that publishes a form the form is the route, so
                the link leads and the address is offered, not demanded. #}
@@ -50,7 +51,8 @@
                 <input type="hidden" name="domain" value="{{ r.domain }}">
                 <input type="text" name="email" inputmode="email"
                        placeholder="{{ 'address, only if you want to ask first'
-                                       if r.stage == 'apply' else 'address you found' }}"
+                                       if r.stage in ('apply', 'intro')
+                                       else 'address you found' }}"
                        style="width:230px;padding:6px var(--s2);font-size:var(--t-sm)">
                 <button type="submit">Add</button>
               </form>

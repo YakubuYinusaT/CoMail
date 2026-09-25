@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import select
 
@@ -47,6 +47,8 @@ class ParsedEntry:
     domain: str | None = None
     email: str | None = None
     problem: str | None = None
+    # The pasted address when it named a page rather than a bare site.
+    seed_url: str | None = None
 
 
 @dataclass
@@ -98,6 +100,30 @@ def normalise_domain(value: str) -> str | None:
     return host
 
 
+def _seed_url(text: str) -> str | None:
+    """The pasted address, when it pointed at a particular page.
+
+    Somebody pasting /ventra-capital means that page. Keying on domain
+    is right for deduplication and wrong for crawling: the one page they
+    named was the one page never fetched.
+
+    A bare domain or a link to the root gives nothing, because the
+    crawler starts there anyway.
+    """
+    candidate = text if "://" in text else f"https://{text}"
+    try:
+        parts = urlsplit(candidate)
+    except ValueError:
+        return None
+    if not parts.netloc:
+        return None
+    path = (parts.path or "").strip("/")
+    if not path:
+        return None
+    rebuilt = urlunsplit(("https", parts.netloc, parts.path, parts.query, ""))
+    return rebuilt[:2000]
+
+
 def parse_entry(raw: str) -> ParsedEntry:
     text = raw.strip()
     if not text:
@@ -119,7 +145,8 @@ def parse_entry(raw: str) -> ParsedEntry:
         return ParsedEntry(raw=raw, email=email,
                            problem="free mail address, no organisation site to crawl")
 
-    return ParsedEntry(raw=raw, domain=domain, email=email)
+    return ParsedEntry(raw=raw, domain=domain, email=email,
+                       seed_url=_seed_url(text))
 
 
 def parse_input(blob: str) -> list[ParsedEntry]:
@@ -150,11 +177,16 @@ def ingest(blob: str, kind: str = "vc") -> IngestResult:
 
             target = s.scalar(select(Target).where(Target.domain == entry.domain))
             if target is None:
-                target = Target(domain=entry.domain, kind=kind)
+                target = Target(domain=entry.domain, kind=kind,
+                                seed_url=entry.seed_url)
                 s.add(target)
                 s.flush()
                 result.created.append(entry.domain)
             else:
+                # A later paste naming a specific page is new information
+                # about a target we already had, so take it.
+                if entry.seed_url and not target.seed_url:
+                    target.seed_url = entry.seed_url
                 result.existing.append(entry.domain)
 
             if entry.email:

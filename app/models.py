@@ -82,6 +82,12 @@ class Target(Base, Timestamped):
     name: Mapped[str | None] = mapped_column(String(300))
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="vc")
 
+    # The address as pasted, when it named a page rather than a site.
+    # Deduplication is by domain, but somebody who pastes
+    # /ventra-capital means that page, and the crawler should start
+    # there rather than rediscovering the homepage.
+    seed_url: Mapped[str | None] = mapped_column(Text)
+
     # Structured summary from enrichment: stages, sectors, geographies,
     # cheque range, portfolio, thesis quote, last deal, accepts_cold.
     profile: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

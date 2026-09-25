@@ -212,6 +212,33 @@ async def _run_enrich(domain: str) -> None:
     # extract_target is synchronous and spends most of its time waiting on
     # the model, so it goes to a thread rather than stalling the loop.
     await asyncio.to_thread(extract_target, domain)
+    await asyncio.to_thread(_score, domain)
+
+
+def _score(domain: str) -> None:
+    """Score and route the target, right after reading it.
+
+    Scoring costs nothing: it is rules over the extracted profile, with no
+    model call, which is why it does not belong behind the Draft button
+    with generation. Leaving it until then meant `channel` was empty on
+    every freshly read target, so a fund that publishes a form still read
+    as waiting for an email address.
+
+    Failing here must not fail the enrichment. The pages and the facts are
+    the expensive part and they are already stored.
+    """
+    from app.models import Campaign
+    from app.qualify import qualify_campaign
+
+    with session() as s:
+        campaign = s.scalar(select(Campaign).order_by(Campaign.created_at.desc()))
+        name = campaign.name if campaign else None
+    if not name:
+        return
+    try:
+        qualify_campaign(name, only=[domain])
+    except Exception as exc:  # noqa: BLE001 - a score is not worth losing a crawl
+        log.warning("could not score %s: %s", domain, exc)
 
 
 def _qualify_then_generate(domain: str, campaign: str) -> None:

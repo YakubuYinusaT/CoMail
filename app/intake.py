@@ -19,7 +19,8 @@ from app.worker import ENRICH, GENERATE, LIVE
 # first because they are the only rows that are stuck.
 STAGE_ORDER = {
     "failed": 0, "working": 1, "queued": 2, "ready": 3,
-    "apply": 4, "needs_email": 5, "drafting": 6, "drafted": 7, "stalled": 8,
+    "apply": 4, "intro": 5, "needs_email": 6,
+    "drafting": 7, "drafted": 8, "stalled": 9,
 }
 
 STAGE_LABEL = {
@@ -27,6 +28,7 @@ STAGE_LABEL = {
     "working": "crawling and reading",
     "ready": "read, ready for you",
     "apply": "apply through their form",
+    "intro": "wants a warm introduction",
     "needs_email": "needs an address from you",
     "drafting": "writing the email",
     "drafted": "draft in the queue",
@@ -149,8 +151,13 @@ def _stage(target, pages: int, facts: int, has_email: bool,
             # that "needs an address from you" made four targets look
             # blocked when none of them were.
             route = _route_note(target)
-            if target.channel in ("form", "intro"):
+            if target.channel == "form":
                 return "apply", route
+            if target.channel == "intro":
+                # Not a form and not an address. Routing put it here
+                # because neither exists, so calling it "apply through
+                # their form" would invent one.
+                return "intro", route
             # No published route, so an address is the only way in.
             return "needs_email", route
         if not facts:
@@ -174,6 +181,6 @@ def counts(rows: list[dict]) -> dict[str, int]:
             out["ready"] += 1
         elif r["stage"] == "failed":
             out["failed"] += 1
-        elif r["stage"] == "apply":
+        elif r["stage"] in ("apply", "intro"):
             out["apply"] += 1
     return out

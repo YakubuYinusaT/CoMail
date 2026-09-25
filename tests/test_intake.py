@@ -129,3 +129,13 @@ def test_counts_group_the_stages_a_person_cares_about():
     rows = [{"stage": s} for s in
             ("queued", "working", "drafting", "ready", "failed", "drafted")]
     assert counts(rows) == {"busy": 3, "ready": 1, "failed": 1, "apply": 0}
+
+
+def test_a_warm_intro_target_is_not_told_to_use_a_form():
+    """Routing sends a target here when there is neither form nor address,
+    so calling it "apply through their form" would invent one."""
+    target = FakeTarget(enriched_at=NOW, channel="intro",
+                        channel_note="no published address and no application form")
+    got, detail = stage(target=target, pages=4, facts=6)
+    assert got == "intro"
+    assert "form" not in STAGE_LABEL["intro"]

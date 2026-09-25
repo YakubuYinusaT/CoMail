@@ -176,6 +176,15 @@ async def crawl_domain(domain: str) -> CrawlReport:
     report = CrawlReport(domain=domain, errors=[])
     base = f"https://{domain}/"
 
+    # The page the operator actually named, if they named one. Fetched
+    # first and never dropped for the page budget: discovery finds what a
+    # site links to prominently, which is not always the arm you care
+    # about. Pasting /ventra-capital and getting the AI product pages
+    # instead is the failure this exists to stop.
+    with session() as s:
+        row = s.scalar(select(Target).where(Target.domain == domain))
+        seed = row.seed_url if row is not None else None
+
     headers = {"User-Agent": USER_AGENT, "Accept-Language": "en"}
     async with httpx.AsyncClient(
         headers=headers, follow_redirects=True, http2=False
@@ -195,10 +204,17 @@ async def crawl_domain(domain: str) -> CrawlReport:
             return report
 
         targets: list[tuple[str, str]] = [("home", home.url)]
+        if seed and seed.rstrip("/") != home.url.rstrip("/"):
+            targets.append(("other", seed))
+
+        seen = {url.rstrip("/") for _, url in targets}
         for kind, url in discover(home.url, home.html).items():
             if len(targets) >= MAX_PAGES:
                 break
+            if url.rstrip("/") in seen:
+                continue
             targets.append((kind, url))
+            seen.add(url.rstrip("/"))
 
         results: list[tuple[str, Fetched]] = [("home", home)]
         for kind, url in targets[1:]:
