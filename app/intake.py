@@ -35,28 +35,52 @@ STAGE_LABEL = {
 
 
 def board(limit: int = 60) -> list[dict]:
-    rows: list[dict] = []
+    """Every target and the stage it has reached.
+
+    A fixed number of queries, not five per target. That mattered less
+    when this ran next to the database; running Cohandle on a laptop puts
+    every round trip across the internet, and the board polls itself
+    while work is in flight.
+    """
     with session() as s:
+        targets = list(s.scalars(
+            select(Target).order_by(Target.created_at.desc()).limit(limit)))
+        if not targets:
+            return []
+        ids = [t.id for t in targets]
+
+        def tally(model, *extra) -> dict:
+            stmt = select(model.target_id, func.count()).where(
+                model.target_id.in_(ids), *extra).group_by(model.target_id)
+            return dict(s.execute(stmt).all())
+
+        pages = tally(Page)
+        facts = tally(Fact)
+        emails = tally(Contact, Contact.email.is_not(None))
+
+        # Oldest first so the newest wins the key, for all three of these.
+        drafts = {d.target_id: d for d in s.scalars(
+            select(Draft).where(Draft.target_id.in_(ids))
+            .order_by(Draft.created_at))}
+        scores = {a.target_id: a.score for a in s.scalars(
+            select(Assessment).where(Assessment.target_id.in_(ids))
+            .order_by(Assessment.created_at))}
         jobs: dict[tuple[str, str], Job] = {}
-        for job in s.scalars(select(Job).order_by(Job.created_at)):
+        for job in s.scalars(select(Job).where(Job.kind.in_([ENRICH, GENERATE]))
+                             .order_by(Job.created_at)):
             domain = job.payload.get("domain")
             if domain:
-                jobs[(job.kind, domain)] = job  # last one wins, which is the newest
+                jobs[(job.kind, domain)] = job
 
-        for t in s.scalars(select(Target).order_by(Target.created_at.desc()).limit(limit)):
-            pages = s.scalar(select(func.count()).select_from(Page)
-                             .where(Page.target_id == t.id)) or 0
-            facts = s.scalar(select(func.count()).select_from(Fact)
-                             .where(Fact.target_id == t.id)) or 0
-            draft = s.scalar(select(Draft).where(Draft.target_id == t.id))
-            has_email = bool(s.scalar(
-                select(func.count()).select_from(Contact).where(
-                    Contact.target_id == t.id, Contact.email.is_not(None))))
-            assessment = s.scalar(select(Assessment).where(Assessment.target_id == t.id))
-            enrich = jobs.get((ENRICH, t.domain))
-            generate = jobs.get((GENERATE, t.domain))
-
-            stage, detail = _stage(t, pages, facts, has_email, draft, enrich, generate)
+        rows: list[dict] = []
+        for t in targets:
+            n_pages = pages.get(t.id, 0)
+            n_facts = facts.get(t.id, 0)
+            has_email = bool(emails.get(t.id, 0))
+            draft = drafts.get(t.id)
+            stage, detail = _stage(t, n_pages, n_facts, has_email, draft,
+                                   jobs.get((ENRICH, t.domain)),
+                                   jobs.get((GENERATE, t.domain)))
             rows.append({
                 "domain": t.domain,
                 "name": t.name or t.domain,
@@ -64,9 +88,9 @@ def board(limit: int = 60) -> list[dict]:
                 "stage": stage,
                 "label": STAGE_LABEL[stage],
                 "detail": detail,
-                "pages": pages,
-                "facts": facts,
-                "score": assessment.score if assessment else None,
+                "pages": n_pages,
+                "facts": n_facts,
+                "score": scores.get(t.id),
                 "draft_id": str(draft.id) if draft else None,
                 "has_email": has_email,
                 # Only offer Draft once there is something to write from

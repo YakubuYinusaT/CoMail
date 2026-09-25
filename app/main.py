@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     if auth.enabled():
         log.info("login is on: shared password, %d day sessions",
                  settings().session_max_age_days)
+    elif os.environ.get("COHANDLE_LOOPBACK") == "1":
+        log.info("login is off, and this is listening on localhost only.")
     else:
         log.warning("login is OFF (APP_PASSWORD is unset). Correct behind "
                     "Identity-Aware Proxy, wrong on a public URL.")

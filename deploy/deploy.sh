@@ -18,6 +18,17 @@ REPO="${REPO:-cohandle}"
 SA="cohandle-run@${PROJECT_ID}.iam.gserviceaccount.com"
 IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
 
+# Keeping an instance warm is what lets the intake worker run when
+# nobody has the page open. It also bills for every second the instance
+# exists, and stops Neon's compute ever suspending, so it is off unless
+# you ask for it: WARM=1 ./deploy/deploy.sh api
+WARM="${WARM:-0}"
+if [ "${WARM}" = "1" ]; then
+  warm_flags=(--min-instances=1 --no-cpu-throttling)
+else
+  warm_flags=(--min-instances=0)
+fi
+
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
 setup() {
@@ -70,11 +81,10 @@ NOTE
 api() {
   gcloud builds submit --tag "${IMAGE_BASE}/api:latest" .
 
-  # min-instances=1 with no-cpu-throttling, together, are what keep the
-  # intake worker running. Warm on its own is not enough: Cloud Run
-  # throttles CPU to near zero as soon as a request finishes, so the
-  # queue would only move while someone had the intake page open.
-  # This bills for an always-on instance. See CLOUDRUN.md.
+  # warm_flags is set at the top, and is off by default. Warm alone
+  # would not be enough anyway: Cloud Run throttles CPU to near zero as
+  # soon as a request finishes, so background work needs
+  # no-cpu-throttling too. See CLOUDRUN.md for what the pair costs.
   gcloud run deploy cohandle-api \
     --image="${IMAGE_BASE}/api:latest" \
     --region="${REGION}" \
@@ -82,8 +92,7 @@ api() {
     --allow-unauthenticated \
     --port=8080 \
     --cpu=1 --memory=1Gi \
-    --min-instances=1 \
-    --no-cpu-throttling \
+    "${warm_flags[@]}" \
     --max-instances=4 \
     --concurrency=20 \
     --timeout=900 \

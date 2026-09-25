@@ -300,23 +300,51 @@ def intake_draft(domain: str = Form(...)):
 
 @router.get("/targets", response_class=HTMLResponse)
 def targets(request: Request):
+    """Everything Cohandle knows about, densest view.
+
+    Counted in grouped queries rather than five per row. On a laptop
+    talking to Frankfurt, the difference is seconds.
+    """
     rows = []
     with session() as s:
-        for t in s.scalars(select(Target).order_by(Target.domain)):
-            a = s.scalar(select(Assessment).where(Assessment.target_id == t.id))
-            d = s.scalar(select(Draft).where(Draft.target_id == t.id))
-            contacts = s.scalars(select(Contact).where(
-                Contact.target_id == t.id, Contact.email.is_not(None))).all()
+        all_targets = list(s.scalars(select(Target).order_by(Target.domain)))
+        ids = [t.id for t in all_targets]
+
+        pages: dict = {}
+        facts: dict = {}
+        contacts: dict[object, list[Contact]] = {}
+        assessments: dict = {}
+        drafts: dict = {}
+        if ids:
+            pages = dict(s.execute(
+                select(Page.target_id, func.count())
+                .where(Page.target_id.in_(ids)).group_by(Page.target_id)).all())
+            facts = dict(s.execute(
+                select(Fact.target_id, func.count())
+                .where(Fact.target_id.in_(ids)).group_by(Fact.target_id)).all())
+            for c in s.scalars(select(Contact).where(
+                    Contact.target_id.in_(ids), Contact.email.is_not(None))):
+                contacts.setdefault(c.target_id, []).append(c)
+            # Oldest first so the newest wins the key.
+            assessments = {a.target_id: a for a in s.scalars(
+                select(Assessment).where(Assessment.target_id.in_(ids))
+                .order_by(Assessment.created_at))}
+            drafts = {d.target_id: d for d in s.scalars(
+                select(Draft).where(Draft.target_id.in_(ids))
+                .order_by(Draft.created_at))}
+
+        for t in all_targets:
+            a = assessments.get(t.id)
+            d = drafts.get(t.id)
+            found = contacts.get(t.id, [])
             rows.append({
                 "domain": t.domain, "name": t.name, "channel": t.channel,
                 "score": a.score if a else None,
                 "verdict": a.verdict if a else None,
-                "pages": s.scalar(select(func.count()).select_from(Page)
-                                  .where(Page.target_id == t.id)) or 0,
-                "facts": s.scalar(select(func.count()).select_from(Fact)
-                                  .where(Fact.target_id == t.id)) or 0,
-                "contacts": len(contacts),
-                "unverified": sum(1 for c in contacts if not c.verified),
+                "pages": pages.get(t.id, 0),
+                "facts": facts.get(t.id, 0),
+                "contacts": len(found),
+                "unverified": sum(1 for c in found if not c.verified),
                 "draft_id": str(d.id) if d else None,
                 "draft_status": d.status if d else None,
             })

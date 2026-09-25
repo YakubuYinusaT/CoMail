@@ -96,11 +96,18 @@ loop directly so the backoff costs nothing in responsiveness. That cuts
 the query volume by well over an order of magnitude, but it does not make
 the compute suspend: anything that polls at all keeps it awake.
 
-If that bill is unwelcome, the cheaper shape is to put min-instances back
-to 0 and have Cloud Scheduler call a drain endpoint every few minutes,
-the same pattern the reply poller already uses. Unattended batches then
-run on a schedule instead of continuously, and both Cloud Run and Neon go
-back to sleep between them.
+Both flags are therefore off by default. Ask for them explicitly:
+
+```bash
+WARM=1 ./deploy/deploy.sh api
+```
+
+If that bill is unwelcome, there are two cheaper shapes. Keep
+min-instances at 0 and have Cloud Scheduler call a drain endpoint every
+few minutes, the same pattern the reply poller already uses. Or do not
+deploy at all: `run-cohandle.cmd` runs the identical app on a laptop, and
+the worker runs for as long as the window is open. Hosting is only worth
+paying for once somebody other than you needs to open the queue.
 
 ## Local
 

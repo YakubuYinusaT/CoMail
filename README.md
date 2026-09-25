@@ -49,11 +49,31 @@ rather than given a generated pleasantry.
 Deployment, secrets and the reasoning behind the infrastructure choices
 are in [`deploy/CLOUDRUN.md`](deploy/CLOUDRUN.md).
 
-Locally:
+### On your own machine, which costs nothing to host
+
+Double-click `run-cohandle.cmd`. It starts the server, waits until it is
+answering, and opens the queue in your browser. Close the window to stop
+it. The intake worker runs the whole time the window is open, which is
+the only thing the Cloud Run deploy was buying.
+
+It listens on 127.0.0.1 and nothing else, so an app with no login is not
+also on the office network.
+
+First time only:
 
 ```bash
-cp .env.example .env     # fill it in
 pip install -r requirements.txt
+cp .env.example .env     # then fill in DATABASE_URL and a model key
+```
+
+The only thing that still costs money this way is the model: extraction
+and generation are API calls whether Cohandle runs in Frankfurt or on
+your desk. Neon's free tier covers the database, because a laptop that
+gets closed lets the compute suspend.
+
+### Or by hand
+
+```bash
 uvicorn app.main:app --reload --port 8080
 curl localhost:8080/readyz
 ```
