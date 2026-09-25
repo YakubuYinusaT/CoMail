@@ -107,11 +107,29 @@ def access_token(force: bool = False) -> str:
 
 
 def _json(response: httpx.Response) -> dict:
+    """Zoho's body as a dict, whatever shape it arrived in.
+
+    Errors on some endpoints come back as a list, `[2, {...}]`, rather
+    than the documented object. Assuming a dict turned a clear message
+    like INVALID_OAUTHSCOPE into an AttributeError several layers away
+    from the cause.
+    """
     try:
-        return response.json()
+        payload = response.json()
     except ValueError:
         raise ZohoError(f"HTTP {response.status_code}, and the body was not "
                         f"JSON: {response.text[:300]}") from None
+
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                code = item.get("errorCode") or item.get("status")
+                message = item.get("msg") or item.get("message") or item
+                raise ZohoError(f"{code}: {message}" if code else str(message))
+    raise ZohoError(f"HTTP {response.status_code}, unexpected body: "
+                    f"{str(payload)[:300]}")
 
 
 def _call(method: str, path: str, json: dict | None = None) -> dict:

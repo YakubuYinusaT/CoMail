@@ -171,3 +171,46 @@ def test_a_token_about_to_expire_is_not_fresh():
     # Inside the minute of slack, so due for refresh.
     assert not zoho.Token("abc", time.time() + 30).fresh
     assert not zoho.Token("", time.time() + 3600).fresh
+
+
+# ------------------------------------------------- zoho error shapes
+
+class FakeResponse:
+    """Just enough httpx.Response for _json."""
+
+    def __init__(self, payload, status_code=200, text=""):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        if self._payload is _INVALID:
+            raise ValueError("not json")
+        return self._payload
+
+
+_INVALID = object()
+
+
+def test_a_list_shaped_error_is_reported_not_crashed():
+    """Zoho answers some endpoints with [2, {...}] instead of an object.
+
+    Assuming a dict turned INVALID_OAUTHSCOPE into an AttributeError
+    several layers from the cause.
+    """
+    payload = [2, {"msg": "Error while processing!",
+                   "errorCode": "INVALID_OAUTHSCOPE", "status": "401"}]
+    with pytest.raises(zoho.ZohoError) as caught:
+        zoho._json(FakeResponse(payload))
+    assert "INVALID_OAUTHSCOPE" in str(caught.value)
+
+
+def test_a_normal_object_still_passes_through():
+    assert zoho._json(FakeResponse({"data": {"messageId": "1"}})) \
+        == {"data": {"messageId": "1"}}
+
+
+def test_a_body_that_is_not_json_says_so():
+    with pytest.raises(zoho.ZohoError) as caught:
+        zoho._json(FakeResponse(_INVALID, status_code=502, text="<html>nope"))
+    assert "502" in str(caught.value)
