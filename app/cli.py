@@ -459,11 +459,16 @@ def cmd_testsend(args: argparse.Namespace) -> int:
         print(f"could not reach Zoho: {exc}")
         return 1
 
-    if to.lower() not in mine:
-        print(f"{to} is not one of your own addresses.")
-        print("This command only sends to yourself. Yours are:")
+    # Unarmed, this may only reach your own mailbox: that exception exists
+    # so delivery can be proved without arming the outreach pipeline. Armed,
+    # there is nothing special about this command, because every draft the
+    # queue sends goes to an address that is not yours by definition.
+    if to.lower() not in mine and not cfg.send_enabled:
+        print(f"{to} is not one of your own addresses, and SEND_ENABLED is false.")
+        print("While sending is off this only reaches you. Yours are:")
         for address in mine:
             print(f"  {address}")
+        print("Set SEND_ENABLED=true to send a test anywhere else.")
         return 1
 
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
