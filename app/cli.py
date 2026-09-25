@@ -432,6 +432,66 @@ def cmd_zoho(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_testsend(args: argparse.Namespace) -> int:
+    """Send one email to yourself, to see what actually arrives.
+
+    This is how the signature question gets settled. Zoho may or may not
+    append the signature you configured in its web client to mail sent
+    through the API, the documentation does not say, and guessing either
+    way would put unsigned emails in front of investors or the same
+    signature twice.
+
+    It works while SEND_ENABLED is false because the recipient is checked
+    against your own Zoho account. It cannot reach anybody else.
+    """
+    from app import zoho
+    from datetime import datetime
+
+    cfg = settings()
+    to = (args.to or cfg.zoho_from_address).strip()
+    if not to:
+        print("No address to send to. Pass one, or set ZOHO_FROM_ADDRESS.")
+        return 1
+
+    try:
+        mine = zoho.own_addresses()
+    except zoho.ZohoError as exc:
+        print(f"could not reach Zoho: {exc}")
+        return 1
+
+    if to.lower() not in mine:
+        print(f"{to} is not one of your own addresses.")
+        print("This command only sends to yourself. Yours are:")
+        for address in mine:
+            print(f"  {address}")
+        return 1
+
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    body = (
+        "This is a test from Cohandle.\n\n"
+        "Nothing was sent to anybody else. It exists to answer one\n"
+        "question: whether Zoho adds the signature you configured in its\n"
+        "web client to mail sent through the API, or only to mail written\n"
+        "in that web client.\n\n"
+        "Look at what arrives. If your signature is below this paragraph,\n"
+        "Zoho is adding it and Cohandle should not. If there is nothing\n"
+        "below this paragraph, Cohandle needs to add it.\n\n"
+        f"Sent {stamp}."
+    )
+
+    print(f"sending one test message to {to}...")
+    try:
+        data = zoho.send(to, "Cohandle test message", body, to_self=True)
+    except Exception as exc:  # noqa: BLE001 - the reason is the whole point
+        print(f"failed: {exc}")
+        return 1
+
+    print(f"sent. Zoho message id {data.get('messageId', '?')}")
+    print("\nOpen it and look at the bottom.")
+    return 0
+
+
+
 def cmd_sends(args: argparse.Namespace) -> int:
     """What has left, what is waiting, and what it is waiting for."""
     from app.models import Send
@@ -535,6 +595,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_zoho = sub.add_parser("zoho", help="check Zoho credentials, sends nothing")
     p_zoho.set_defaults(func=cmd_zoho)
+
+    p_test = sub.add_parser("testsend",
+                            help="send one email to yourself and see what arrives")
+    p_test.add_argument("--to", default=None,
+                        help="one of your own addresses; defaults to ZOHO_FROM_ADDRESS")
+    p_test.set_defaults(func=cmd_testsend)
 
     p_sends = sub.add_parser("sends", help="delivery state")
     p_sends.add_argument("--limit", type=int, default=20)

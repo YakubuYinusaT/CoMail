@@ -148,8 +148,27 @@ def accounts() -> list[dict]:
     return _call("GET", "/api/accounts").get("data") or []
 
 
+def own_addresses() -> list[str]:
+    """Every address this account is allowed to send as, and receive at.
+
+    Used to decide whether a message is going to the operator themselves,
+    which is the one case where sending is allowed while unarmed.
+    """
+    addresses: list[str] = []
+    for account in accounts():
+        primary = account.get("primaryEmailAddress")
+        if primary:
+            addresses.append(primary.lower())
+        for detail in account.get("sendMailDetails") or []:
+            address = detail.get("fromAddress")
+            if address:
+                addresses.append(address.lower())
+    return sorted(set(addresses))
+
+
 def send(to: str, subject: str, body: str,
-         schedule_at: str | None = None, timezone: str | None = None) -> dict:
+         schedule_at: str | None = None, timezone: str | None = None,
+         to_self: bool = False) -> dict:
     """Send one plaintext email. Returns Zoho's data block.
 
     `schedule_at` is Zoho's own format, MM/DD/YYYY HH:MM:SS, and requires
@@ -158,7 +177,17 @@ def send(to: str, subject: str, body: str,
     a send that was already decided.
     """
     if not settings().send_enabled:
-        raise NotArmed("SEND_ENABLED is not true; refusing to send")
+        # One exception, and it is narrow on purpose. A message to an
+        # address on your own Zoho account cannot reach anybody else, and
+        # proving delivery before arming outreach is worth more than the
+        # purity of a single rule. The caller asking is not enough: the
+        # recipient is checked against the account.
+        if not to_self:
+            raise NotArmed("SEND_ENABLED is not true; refusing to send")
+        if to.strip().lower() not in own_addresses():
+            raise NotArmed(
+                f"SEND_ENABLED is not true, and {to} is not one of your own "
+                f"addresses, so this is not a test you can run unarmed")
     if not to or "@" not in to:
         raise ZohoError(f"refusing to send to {to!r}")
     _require("zoho_account_id", "zoho_from_address")
