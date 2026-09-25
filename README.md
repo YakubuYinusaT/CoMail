@@ -11,6 +11,25 @@ on there.
 Built first for the Connected Intelligence raise. Designed to generalise to
 OEM, DisCo and partner outreach without rework.
 
+## The two directions a draft can lie
+
+Claims about the **recipient** are checked against the pages Cohandle
+crawled. A fact carries the url it came from, a draft can only cite facts
+that exist, and an address that does not appear on the page it claims to
+come from is thrown away.
+
+Claims about **us** have no page to check against, and the first real
+batch showed what that costs. The campaign profile said "Partnership
+letters sent to EKEDC and Ikeja Electric. No signed agreement yet" and
+both drafts wrote that partnerships had been initiated. The prompt
+forbade exactly that, in as many words, and it happened anyway.
+
+So the review screen now lists every sentence that asserts something
+about us, with the profile lines beside it, and says plainly that it
+cannot verify them. It does not block or rewrite: the operator vets these
+drafts either way, and the job of the panel is to make that two sentences
+rather than the whole email.
+
 ## Screens
 
 The menu holds two kinds of screen, and the rule in it separates them.

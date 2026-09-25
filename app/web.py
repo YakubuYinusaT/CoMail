@@ -26,6 +26,7 @@ from app.ingest import ingest
 from app.intake import board, counts
 from app.models import Assessment, Campaign, Contact, Draft, DraftFact, Fact, Page, Target
 from app.qualify import email_advice
+from app.sender_claims import review as review_sender
 from app.worker import ENRICH, GENERATE, enqueue
 
 router = APIRouter()
@@ -141,6 +142,13 @@ def draft_detail(request: Request, draft_id: str):
 
         profile = t.profile or {}
         ok, why = email_advice(profile, c is not None)
+
+        # Claims the draft makes about us. Checked at render time rather
+        # than stored, so editing the body updates the list instead of
+        # leaving stale warnings against text that no longer says it.
+        campaign = s.get(Campaign, d.campaign_id)
+        pitch = (campaign.sender_profile or {}).get("pitch", "") if campaign else ""
+        claims = review_sender(d.body, pitch)
         ctx = {
             "nav": "queue", "d": d, "t": t, "contact": c,
             "score": a.score if a else None,
@@ -150,6 +158,9 @@ def draft_detail(request: Request, draft_id: str):
             "app": profile.get("application") or {},
             "observations": profile.get("observations") or [],
             "email_ok": ok, "advice_why": why,
+            "sender_claims": claims,
+            "claims_wrong": sum(1 for cl in claims
+                                if cl.severity in ("contradicted", "unsupported")),
         }
         return templates.TemplateResponse(request, "draft.html", ctx)
 

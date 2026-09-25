@@ -163,6 +163,22 @@ first meeting is where it falls apart. Where the context states what has
 normal thing to be, and saying so plainly reads better than a claim that
 will not survive one question.
 
+Carry the sender's hedges across exactly. Upgrading a careful statement
+into a confident one is the failure this instruction exists to stop, and
+it is not caught by avoiding the banned words. From a real draft:
+
+  context:  Partnership letters sent to EKEDC and Ikeja Electric. No
+            signed agreement yet.
+  written:  we have initiated partnerships with major players like EKEDC
+            and Ikeja Electric
+  wrong:    letters sent is not a partnership initiated. The reader will
+            ask who signed, and nobody did.
+  instead:  we have written to EKEDC and Ikeja Electric
+
+"Approached", "in discussion", "in progress", "working with" and
+"engaged" are all the same mistake when what happened was a letter. If
+the context does not name a stage, do not invent one.
+
 Everything else is your judgement.
 
 You are given ranked openings. They are suggestions in order of strength,
