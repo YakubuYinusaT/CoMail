@@ -88,6 +88,12 @@ class Target(Base, Timestamped):
     # there rather than rediscovering the homepage.
     seed_url: Mapped[str | None] = mapped_column(Text)
 
+    # Why you are writing to them, in your own words. Cohandle can read
+    # what a fund does off its website; it cannot know whether this is a
+    # qualifying question before you spend an hour on their form, or an
+    # introduction to the round.
+    brief: Mapped[str | None] = mapped_column(Text)
+
     # Structured summary from enrichment: stages, sectors, geographies,
     # cheque range, portfolio, thesis quote, last deal, accepts_cold.
     profile: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

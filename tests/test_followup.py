@@ -125,3 +125,35 @@ def test_anything_but_sent_is_refused_before_anything_else_is_considered(state):
 def test_a_reply_outranks_the_waiting_period():
     """Answered on day one still stops it, not "too soon" then later yes."""
     assert check(answered=True, sent_at=NOW - timedelta(days=1)) == "they replied"
+
+
+# ---------------------------------------------------- asking for one
+
+def test_pressing_the_button_waives_only_the_wait():
+    """Waiting is a courtesy a person can judge. The rest is not."""
+    assert check(sent_at=NOW - timedelta(days=1), manual=True) is None
+
+
+def test_the_button_does_not_waive_a_reply():
+    """The one thing a second email must never do."""
+    assert check(answered=True, manual=True) == "they replied"
+
+
+def test_the_button_does_not_waive_an_unsent_first_email():
+    why = check(send_state="drafted", manual=True)
+    assert why and "not sent" in why
+
+
+def test_the_button_does_not_waive_a_bounce():
+    why = check(send_state="bounced", manual=True)
+    assert why and "not sent" in why
+
+
+def test_the_button_does_not_waive_the_step_limit():
+    why = check(step=2, max_step=2, manual=True)
+    assert why and "limit" in why
+
+
+def test_the_button_does_not_write_a_second_copy():
+    why = check(already_written=True, manual=True)
+    assert why and "already been written" in why

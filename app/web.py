@@ -28,6 +28,7 @@ from app.models import (Assessment, Campaign, Contact, Draft, DraftFact, Fact,
                         Page, Reply, Send, Target)
 from app.house_style import find as find_slop
 from app.qualify import email_advice
+from app.followup import status as followup_status
 from app.sending import drafting, may_send, queue as queue_send, signature
 from app.sender_claims import review as review_sender
 from app.worker import ENRICH, GENERATE, enqueue
@@ -300,7 +301,8 @@ def intake_board(request: Request):
 
 
 @router.post("/intake", response_class=HTMLResponse)
-def intake_submit(request: Request, blob: str = Form(""), kind: str = Form("vc")):
+def intake_submit(request: Request, blob: str = Form(""), kind: str = Form("vc"),
+                  brief: str = Form("")):
     """Paste in, targets out, crawling started.
 
     Safe to submit twice: ingest keys on domain, enqueue refuses a second
@@ -309,7 +311,7 @@ def intake_submit(request: Request, blob: str = Form(""), kind: str = Form("vc")
     """
     if kind not in KINDS:
         kind = "vc"
-    outcome = ingest(blob, kind=kind)
+    outcome = ingest(blob, kind=kind, brief=brief)
 
     started, already_read = [], []
     with session() as s:
@@ -368,6 +370,28 @@ def intake_confirm(domain: str = Form(...), email: str = Form(...)):
             if contact is not None:
                 contact.verified = True
     return RedirectResponse("/intake", status_code=303)
+
+
+@router.post("/intake/brief")
+def intake_brief(domain: str = Form(...), brief: str = Form("")):
+    """Change why you are writing to one target."""
+    with session() as s:
+        target = s.scalar(select(Target).where(Target.domain == domain))
+        if target is not None:
+            target.brief = brief.strip() or None
+    return RedirectResponse(f"/target/{domain}", status_code=303)
+
+
+@router.post("/intake/followup")
+def intake_followup(domain: str = Form(...)):
+    """Write a follow-up now, rather than waiting for the automatic pass.
+
+    Pressing this waives the waiting period. It does not waive the rest:
+    a fund that replied, a first email that never went, or the step
+    limit still refuse, and the target page says which.
+    """
+    enqueue(GENERATE, domain=domain, followup=True)
+    return RedirectResponse(f"/target/{domain}", status_code=303)
 
 
 @router.post("/intake/draft")
@@ -472,18 +496,24 @@ def target_detail(request: Request, domain: str):
                                .order_by(Page.kind)))
 
         profile = t.profile or {}
-        return templates.TemplateResponse(request, "target.html", {
-            "nav": "targets", "t": t, "profile": profile,
-            "application": profile.get("application") or {},
-            "observations": profile.get("observations") or [],
-            "score": assessment.score if assessment else None,
-            "verdict": assessment.verdict if assessment else None,
-            "criteria": (assessment.reasons or {}).get("criteria") if assessment else None,
-            "rejection": (assessment.reasons or {}).get("rejection_reason") if assessment else None,
-            "facts": facts, "pages": pages, "contacts": contacts,
-            "draft": draft, "send": send, "reply": reply,
-            "drafts": drafts, "sends": sends,
-        })
+
+    # Outside the session: it opens its own, and holding one across a
+    # second is how a pool of three runs out.
+    follow_ok, follow_why = followup_status(domain)
+
+    return templates.TemplateResponse(request, "target.html", {
+        "nav": "targets", "t": t, "profile": profile,
+        "application": profile.get("application") or {},
+        "observations": profile.get("observations") or [],
+        "score": assessment.score if assessment else None,
+        "verdict": assessment.verdict if assessment else None,
+        "criteria": (assessment.reasons or {}).get("criteria") if assessment else None,
+        "rejection": (assessment.reasons or {}).get("rejection_reason") if assessment else None,
+        "facts": facts, "pages": pages, "contacts": contacts,
+        "draft": draft, "send": send, "reply": reply,
+        "drafts": drafts, "sends": sends,
+        "can_follow_up": follow_ok, "follow_why": follow_why,
+    })
 
 
 @router.get("/apply", response_class=HTMLResponse)

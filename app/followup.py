@@ -64,7 +64,8 @@ class Report:
 
 def verdict(*, send_state: str, sent_at: datetime | None, draft_status: str,
             step: int, answered: bool, already_written: bool,
-            now: datetime, after_days: int, max_step: int) -> str | None:
+            now: datetime, after_days: int, max_step: int,
+            manual: bool = False) -> str | None:
     """Why this target is not owed a follow-up, or None if it is.
 
     Every reason is named rather than returned as a bare False, because
@@ -82,7 +83,10 @@ def verdict(*, send_state: str, sent_at: datetime | None, draft_status: str,
     if answered:
         return "they replied"
     waited = now - sent_at
-    if waited < timedelta(days=after_days):
+    if not manual and waited < timedelta(days=after_days):
+        # The only rule a person may overrule by pressing the button.
+        # Waiting is a courtesy and they can judge it; the others are
+        # about whether a second email is defensible at all.
         remaining = timedelta(days=after_days) - waited
         return f"only {waited.days}d since sending, {remaining.days + 1}d to go"
     if step + 1 > max_step:
@@ -92,8 +96,16 @@ def verdict(*, send_state: str, sent_at: datetime | None, draft_status: str,
     return None
 
 
-def due(now: datetime | None = None) -> list[Candidate]:
-    """Every target owed a follow-up, and nothing that is not."""
+def due(now: datetime | None = None, only: str | None = None,
+        manual: bool = False) -> list[Candidate]:
+    """Every target owed a follow-up, and nothing that is not.
+
+    `manual` means a person asked for this one, which waives the waiting
+    period and nothing else. Whether they replied, whether the first
+    email ever went, and the step limit are not theirs to waive by
+    accident: those are the rules that stop a second email being a
+    mistake rather than merely early.
+    """
     cfg = settings()
     now = now or datetime.now(timezone.utc)
     candidates: list[Candidate] = []
@@ -106,6 +118,10 @@ def due(now: datetime | None = None) -> list[Candidate]:
             draft = s.get(Draft, row.draft_id)
             if draft is None:
                 continue
+            if only is not None:
+                target_row = s.get(Target, draft.target_id)
+                if target_row is None or target_row.domain != only:
+                    continue
             next_step = draft.step + 1
             already = s.scalar(select(Draft).where(
                 Draft.target_id == draft.target_id,
@@ -117,7 +133,7 @@ def due(now: datetime | None = None) -> list[Candidate]:
                 draft_status=draft.status, step=draft.step,
                 answered=draft.target_id in answered, already_written=already,
                 now=now, after_days=cfg.followup_after_days,
-                max_step=cfg.followup_max_step)
+                max_step=cfg.followup_max_step, manual=manual)
             if why is not None:
                 continue
 
@@ -239,14 +255,56 @@ def write(candidate: Candidate, model: str | None = None) -> Draft:
     return draft
 
 
-def run(model: str | None = None) -> Report:
+def status(domain: str, now: datetime | None = None) -> tuple[bool, str]:
+    """Whether a follow-up can be asked for, and why not if it cannot.
+
+    Used by the button, so the screen can say "they replied" rather than
+    showing a control that would do nothing.
+    """
+    now = now or datetime.now(timezone.utc)
+    cfg = settings()
+    with session() as s:
+        target = s.scalar(select(Target).where(Target.domain == domain))
+        if target is None:
+            return False, "no such target"
+
+        answered = {r.target_id for r in s.scalars(
+            select(Reply).where(Reply.is_auto_reply.is_(False)))}
+
+        reasons: list[str] = []
+        for draft in s.scalars(select(Draft).where(
+                Draft.target_id == target.id).order_by(Draft.step.desc())):
+            row = s.scalar(select(Send).where(Send.draft_id == draft.id))
+            if row is None:
+                reasons.append("the first email has not been handed to Zoho yet")
+                continue
+            already = s.scalar(select(Draft).where(
+                Draft.target_id == target.id,
+                Draft.campaign_id == draft.campaign_id,
+                Draft.step == draft.step + 1)) is not None
+            why = verdict(
+                send_state=row.state, sent_at=row.sent_at,
+                draft_status=draft.status, step=draft.step,
+                answered=target.id in answered, already_written=already,
+                now=now, after_days=cfg.followup_after_days,
+                max_step=cfg.followup_max_step, manual=True)
+            if why is None:
+                return True, ""
+            reasons.append(why)
+        return False, reasons[0] if reasons else "nothing has been sent yet"
+
+
+def run(model: str | None = None, only: str | None = None,
+        manual: bool = False) -> Report:
     """Draft a follow-up for everything that is owed one."""
     report = Report()
-    if not settings().followups_enabled:
+    # A person pressing the button has asked for this one, so the global
+    # switch is about the automatic pass rather than about them.
+    if not manual and not settings().followups_enabled:
         report.note = "FOLLOWUPS_ENABLED is false"
         return report
 
-    candidates = due()
+    candidates = due(only=only, manual=manual)
     report.due = [c.domain for c in candidates]
     for candidate in candidates:
         try:

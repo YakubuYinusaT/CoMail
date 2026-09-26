@@ -117,6 +117,19 @@
       </form>
     </div>
 
+    <div class="card">
+      <p class="eyebrow">Why you are writing to them</p>
+      <p class="faint" style="font-size:var(--t-sm);margin:0 0 var(--s3)">
+        Your words, used when the email is written. Cohandle can read what
+        they do; it cannot know what you want from them.</p>
+      <form method="post" action="/intake/brief" style="margin:0">
+        <input type="hidden" name="domain" value="{{ t.domain }}">
+        <textarea name="brief" style="min-height:76px;font-size:var(--t-md)"
+          placeholder="A qualifying question before I fill in their form">{{ t.brief or '' }}</textarea>
+        <div style="margin-top:var(--s2)"><button type="submit">Save</button></div>
+      </form>
+    </div>
+
     {% if criteria %}
     <div class="card">
       <p class="eyebrow">Why it scored {{ score }}</p>
@@ -155,7 +168,24 @@
           <input type="hidden" name="domain" value="{{ t.domain }}">
           <button class="primary" type="submit">Draft an email</button>
         </form>
-      {% else %}
+      {% endif %}
+
+      {# Asking for a follow-up waives the waiting period and nothing
+         else, so when it cannot be offered the reason is shown rather
+         than a button that would do nothing. #}
+      {% if drafts %}
+        {% if can_follow_up %}
+          <form method="post" action="/intake/followup" style="margin:var(--s2) 0 0">
+            <input type="hidden" name="domain" value="{{ t.domain }}">
+            <button type="submit">Write a follow-up</button>
+          </form>
+        {% else %}
+          <p class="faint" style="margin:var(--s2) 0 0;font-size:var(--t-sm)">
+            No follow-up: {{ follow_why }}.</p>
+        {% endif %}
+      {% endif %}
+
+      {% if not drafts %}
         <p class="mute" style="margin:0;font-size:var(--t-md)">Nothing drafted.
           {% if not t.enriched_at %}This target has not been read yet.
           {% else %}Confirm an address first.{% endif %}</p>

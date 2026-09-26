@@ -164,8 +164,13 @@ def parse_input(blob: str) -> list[ParsedEntry]:
     return out
 
 
-def ingest(blob: str, kind: str = "vc") -> IngestResult:
-    """Create targets for everything parseable. Idempotent on domain."""
+def ingest(blob: str, kind: str = "vc", brief: str = "") -> IngestResult:
+    """Create targets for everything parseable. Idempotent on domain.
+
+    `brief` is why you are writing to this batch, in your own words. It
+    is stored per target, because a later batch may be approaching the
+    same kind of fund for a different reason.
+    """
     result = IngestResult()
     entries = parse_input(blob)
 
@@ -178,7 +183,8 @@ def ingest(blob: str, kind: str = "vc") -> IngestResult:
             target = s.scalar(select(Target).where(Target.domain == entry.domain))
             if target is None:
                 target = Target(domain=entry.domain, kind=kind,
-                                seed_url=entry.seed_url)
+                                seed_url=entry.seed_url,
+                                brief=brief.strip() or None)
                 s.add(target)
                 s.flush()
                 result.created.append(entry.domain)
@@ -187,6 +193,10 @@ def ingest(blob: str, kind: str = "vc") -> IngestResult:
                 # about a target we already had, so take it.
                 if entry.seed_url and not target.seed_url:
                     target.seed_url = entry.seed_url
+                # A new brief replaces an old one: pasting a target again
+                # with a reason is you saying the reason has changed.
+                if brief.strip():
+                    target.brief = brief.strip()
                 result.existing.append(entry.domain)
 
             if entry.email:

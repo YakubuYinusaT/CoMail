@@ -109,6 +109,7 @@ def test_prompt_without_facts_forbids_specifics_explicitly():
 
     class T:
         name, domain, profile = "Thin Fund", "thin.vc", {}
+        brief = None
 
     class C:
         sender_profile = {}
@@ -124,6 +125,7 @@ def test_prompt_with_facts_lists_ids_and_sources():
     class T:
         name, domain = "Good Fund", "good.vc"
         profile = {}
+        brief = None
 
     class C:
         sender_profile = {}
@@ -207,3 +209,32 @@ def test_a_single_draft_is_never_flagged():
     report = compare_batch({"only": MAIL_A})
     assert report.flagged == []
     assert report.worst["only"] == 0.0
+
+
+def test_the_brief_becomes_an_instruction_in_the_prompt():
+    """Why you are writing is not something the website can tell you.
+
+    A fund that publishes a form is often worth an email first, and that
+    email is a different email depending on the reason.
+    """
+
+    class T:
+        name, domain, profile = "Good Fund", "good.vc", {}
+        brief = "Ask whether they fund pre-revenue companies in Nigeria."
+
+    class C:
+        sender_profile = {}
+
+    prompt = build_prompt(T(), gather_evidence([], {}, SENDER), SENDER, C())
+    assert "WHY YOU ARE WRITING TO THEM" in prompt
+    assert "pre-revenue companies in Nigeria" in prompt
+
+
+def test_no_brief_adds_nothing_to_the_prompt():
+    class T:
+        name, domain, profile = "Good Fund", "good.vc", {}
+        brief = None
+
+    prompt = build_prompt(T(), gather_evidence([], {}, SENDER), SENDER,
+                          type("C", (), {"sender_profile": {}})())
+    assert "WHY YOU ARE WRITING" not in prompt

@@ -98,6 +98,18 @@ sending.
 python -m app.cli sends
 ```
 
+## Telling it why you are writing
+
+Cohandle can read what a fund does off its website. It cannot know what
+you want from them. A fund that publishes a form is often worth an email
+first, and that email is a different email depending on the reason: a
+qualifying question before you spend an hour on their form is not an
+introduction to the round.
+
+The box under the paste field on the Add screen is that reason, in your
+own words. It is stored per target and used when the email is written,
+and the target page has the same box so it can be changed later.
+
 ## The second email
 
 A follow-up is not a different kind of object. It is another email to the
@@ -123,6 +135,12 @@ answer.
 ```bash
 python -m app.cli followup --dry-run
 ```
+
+The target page has a **Write a follow-up** button for when you do not
+want to wait. Pressing it waives the waiting period and nothing else: a
+fund that replied, a first email that never went, a bounce and the step
+limit all still refuse, and the page says which rather than showing a
+button that would do nothing.
 
 ## Noticing when somebody writes back
 

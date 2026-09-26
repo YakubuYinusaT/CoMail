@@ -349,6 +349,24 @@ async def _run_send(send_id: str) -> None:
             raise Permanent(row.error if row and row.error else "send failed")
 
 
+async def _run_followup(domain: str) -> None:
+    """Write a follow-up because a person asked for this one.
+
+    Pressing the button waives the waiting period and nothing else, so a
+    refusal here is a real reason and is worth surfacing rather than
+    retrying.
+    """
+    from app import followup
+
+    report = await asyncio.to_thread(
+        followup.run, None, domain, True)
+    if report.failed:
+        raise Permanent(report.failed[0][1])
+    if not report.written:
+        ok, why = await asyncio.to_thread(followup.status, domain)
+        raise Permanent(why or "no follow-up was owed")
+
+
 async def run_one() -> bool:
     """Claim and run a single job. False means there was nothing to do."""
     taken = claim()
@@ -359,6 +377,8 @@ async def run_one() -> bool:
     try:
         if kind == ENRICH:
             await _run_enrich(domain)
+        elif kind == GENERATE and payload.get("followup"):
+            await _run_followup(domain)
         elif kind == GENERATE:
             await _run_generate(domain, payload["campaign"])
         elif kind == SEND:

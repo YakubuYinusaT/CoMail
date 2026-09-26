@@ -270,6 +270,19 @@ def build_prompt(
     ]
     if sender.raise_target_usd:
         lines.append(f"  raising: ${sender.raise_target_usd:,}")
+    if target.brief:
+        lines += [
+            "",
+            "WHY YOU ARE WRITING TO THEM (from the operator, follow it):",
+            target.brief.strip(),
+            "",
+            "That is the purpose of this email. If it asks a question, the "
+            "email exists to get that question answered, and the pitch is "
+            "context rather than the point. Do not pad it out into a full "
+            "introduction when a short, direct question is what was asked "
+            "for.",
+        ]
+
     if profile.get("pitch"):
         lines += ["", "SENDER CONTEXT (true, use what helps):", profile["pitch"].strip()]
 
