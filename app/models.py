@@ -94,6 +94,11 @@ class Target(Base, Timestamped):
     # introduction to the round.
     brief: Mapped[str | None] = mapped_column(Text)
 
+    # Ticked off by hand: emailed, or their form submitted. Cohandle
+    # cannot see either happen, so it is a person saying so. Set, the
+    # target leaves the Add board, which is the point.
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Structured summary from enrichment: stages, sectors, geographies,
     # cheque range, portfolio, thesis quote, last deal, accepts_cold.
     profile: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
@@ -109,6 +114,7 @@ class Target(Base, Timestamped):
         _enum("kind", "vc", "grant", "accelerator", "angel", "oem", "disco", "other"),
         _enum("channel", "email", "form", "intro", "hold", "blocked"),
         Index("ix_target_enriched_at", "enriched_at"),
+        Index("ix_target_done_at", "done_at"),
     )
 
 
