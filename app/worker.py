@@ -202,6 +202,20 @@ def sweep_reconcile() -> None:
     if answered.replies or answered.bounced:
         log.info("replies: %s", answered)
 
+    # Follow-ups last, and deliberately after the reply poll: a fund that
+    # answered in the last ten minutes must not be nudged in the next
+    # ten. Writing one costs a model call, so a failure is logged and
+    # dropped rather than retried on the next beat.
+    from app import followup
+
+    try:
+        nudges = followup.run()
+    except Exception:  # noqa: BLE001 - same reasoning
+        log.debug("follow-up pass failed", exc_info=True)
+        return
+    if nudges.written or nudges.failed:
+        log.info("follow-ups: %s", nudges)
+
 
 def claim() -> tuple[uuid.UUID, str, dict] | None:
     """Take the oldest ready job. Returns plain values, not a live row.

@@ -197,6 +197,11 @@ class Draft(Base, Timestamped):
     campaign_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("campaign.id", ondelete="CASCADE"), nullable=False)
     contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contact.id", ondelete="SET NULL"))
 
+    # 1 is the first approach, 2 the first follow-up, and so on. A
+    # follow-up is another email to the same fund, not another kind of
+    # thing, so it gets the same review and the same guards.
+    step: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
     hook_type: Mapped[str] = mapped_column(String(24), nullable=False)
     subject: Mapped[str] = mapped_column(Text, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -230,7 +235,9 @@ class Draft(Base, Timestamped):
             "queued",
             "sent",
         ),
-        UniqueConstraint("target_id", "campaign_id", name="uq_draft_target_campaign"),
+        UniqueConstraint("target_id", "campaign_id", "step",
+                         name="uq_draft_target_campaign_step"),
+        CheckConstraint("step >= 1", name="ck_step"),
         Index("ix_draft_status", "status"),
     )
 

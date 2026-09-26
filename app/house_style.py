@@ -31,7 +31,7 @@ import textwrap
 # resonate, resonates, resonated and resonating.
 STEMS = {
     # stock opener vocabulary
-    "reaching out", "circling back", "synerg", "excited to",
+    "synerg", "excited to",
     "aligns perfectly", "perfect fit", "significant fit", "innovativ",
     "cutting-edge", "passionate about", "would love to",
     "i hope this finds you well",
@@ -57,6 +57,21 @@ STEMS = {
 PATTERNS = {
     "disrupting the market": r"\bdisrupt\w*\s+(the\s+)?(\w+\s+)?(market|industry|sector|space|status quo)\b",
     "unlocking something abstract": r"\bunlock\w*\s+(the\s+)?(\w+\s+)?(potential|value|growth|access|opportunit\w*|future)\b",
+    # Multi-word phrases inflect. A plain string caught "reaching out"
+    # and let "reached out" through, which is exactly what a follow-up
+    # reaches for. The verb is matched by stem, not by one spelling.
+    "reaching out": r"\breach\w*\s+out\b",
+    "circling back": r"\bcircl\w*\s+back\b",
+    "following up": r"\b(just |simply )?follow\w*\s+up\b",
+    # "we check in customers at the meter" is a real sentence in this
+    # business, and "I wanted to check in" is the cliche. The difference
+    # is whether it takes an object: the cliche never does.
+    "checking in": r"\bcheck\w*\s+in\b(?=\s*(?:[,.!?]|$|on\b|about\b|regarding\b|with\b|to see\b|re\b))",
+    "touching base": r"\btouch\w*\s+base\b",
+    "bumping this": r"\bbump\w*\s+(this|it|the thread)\b",
+    "in case you missed it": r"\bin case you missed it\b",
+    "per my last email": r"\bper my (last|previous) (e-?mail|message)\b",
+    "gentle reminder": r"\b(gentle|friendly) (reminder|nudge)\b",
     "aligning with your mission": r"\balign\w*\s+(deeply\s+)?with\s+(your|their|this|our)\b",
     "an em dash": r"\u2014",
     "leverage as a verb": r"\bleverag(e|es|ed|ing)\b",
@@ -77,8 +92,15 @@ def find(*texts: str) -> list[str]:
             hits.append(match.group(0).strip())
 
     for name, pattern in PATTERNS.items():
-        if re.search(pattern, hay, re.I):
-            hits.append(name)
+        match = re.search(pattern, hay, re.I)
+        if not match:
+            continue
+        # Report what was written, not the canonical name. Telling a model
+        # it used "reaching out" when it wrote "reached out" is a complaint
+        # it cannot act on, and it wrote "reached out" again.
+        written = match.group(0).strip().lower()
+        hits.append(written if written.isascii() and written.replace(" ", "").isalpha()
+                    else name)
 
     # "unlock" is inside "unlocking"; report what was actually written.
     return sorted({h for h in hits
@@ -106,3 +128,28 @@ def for_prompt(width: int = 68) -> str:
                             initial_indent="  ", subsequent_indent="  ")
     return ('  em dashes; "I hope this finds you well"; leverage as a verb;\n'
             '  aligning or resonating with their mission; and:\n\n' + wrapped)
+
+
+# The prompt says to write no greeting and no sign-off, because both are
+# added at send time and a model guessing at a name is a way to address
+# an investor as "Dear Team". It mostly obeys and sometimes does not, so
+# this removes them rather than trusting it.
+GREETING = re.compile(
+    r"^\s*(hi|hello|hey|dear|good (morning|afternoon|evening))"
+    r"\b[^\n]{0,60}?[,.!]?\s*\n+", re.I)
+
+SIGN_OFF = re.compile(
+    r"\n\s*(best|best regards|kind regards|regards|sincerely|thanks|"
+    r"thank you|cheers|warmly|yours( sincerely| faithfully)?)"
+    r"\s*[,.!]?\s*(?:\n.{0,80})?\s*$", re.I)
+
+
+def strip_edges(body: str) -> str:
+    """Remove a greeting or a sign-off the model added anyway."""
+    text = (body or "").strip()
+    previous = None
+    while text != previous:
+        previous = text
+        text = GREETING.sub("", text, count=1).strip()
+        text = SIGN_OFF.sub("", text, count=1).strip()
+    return text

@@ -34,6 +34,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.db import session
 from app.house_style import find as find_slop
+from app.house_style import strip_edges
 from app.house_style import for_prompt as slop_for_prompt
 from app.llm import ProviderNotConfigured, complete
 from app.models import Campaign, Contact, Draft, DraftFact, Fact, Target
@@ -399,18 +400,23 @@ def generate_campaign(
                     Contact.target_id == target.id, Contact.email.is_not(None)
                 ).limit(1)
             )
+            # Step 1 only. A follow-up is a draft for the same target in
+            # the same campaign, and regenerating the first approach must
+            # not silently overwrite the second one.
             draft = s.scalar(
                 select(Draft).where(
-                    Draft.target_id == target.id, Draft.campaign_id == campaign.id
+                    Draft.target_id == target.id,
+                    Draft.campaign_id == campaign.id,
+                    Draft.step == 1,
                 )
             )
             if draft is None:
-                draft = Draft(target_id=target.id, campaign_id=campaign.id)
+                draft = Draft(target_id=target.id, campaign_id=campaign.id, step=1)
                 s.add(draft)
             draft.contact_id = contact.id if contact else None
             draft.hook_type = evidence.kind
             draft.subject = email.subject
-            draft.body = email.body
+            draft.body = strip_edges(email.body)
             draft.status = "generated"
             s.flush()
 
@@ -455,7 +461,7 @@ def generate_campaign(
                     report.failed.append((domain, f"regenerate: {exc}"))
                     continue
                 draft.subject = email.subject
-                draft.body = email.body
+                draft.body = strip_edges(email.body)
                 if domain not in report.regenerated:
                     report.regenerated.append(domain)
 

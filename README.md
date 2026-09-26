@@ -98,6 +98,32 @@ sending.
 python -m app.cli sends
 ```
 
+## The second email
+
+A follow-up is not a different kind of object. It is another email to the
+same fund, so it is a draft with a step number, and it gets the review
+screen, the claims check, the house style check and the same trip into
+Zoho Drafts that the first one got. Nothing sends itself.
+
+Most of `app/followup.py` is about when not to write one. A nudge is owed
+when a first email was **actually sent**, meaning the Sent folder
+confirmed it, when `FOLLOWUP_AFTER_DAYS` have passed, and when nobody
+answered. It stops for a reply, for a bounce, for a rejected first draft,
+and at `FOLLOWUP_MAX_STEP`, which is 2: three emails to somebody who has
+said nothing is where persistence turns into a nuisance.
+
+An out of office does not stop it. A machine saying somebody is away is
+not an answer, and treating it as one would cancel a nudge that is still
+owed.
+
+Every refusal is a named reason rather than a bare no, because "why did
+Cohandle not follow up on this one" is a question worth being able to
+answer.
+
+```bash
+python -m app.cli followup --dry-run
+```
+
 ## Noticing when somebody writes back
 
 A follow-up sent to a fund that already replied undoes the one thing that

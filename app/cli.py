@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import datetime, timezone
 import logging
 import sys
 
@@ -551,6 +552,26 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
 
 
 
+def cmd_followup(args: argparse.Namespace) -> int:
+    """Draft a follow-up for everything owed one."""
+    from app import followup
+
+    if args.dry_run:
+        for c in followup.due():
+            days = (datetime.now(timezone.utc) - c.sent_at).days
+            print(f"  step {c.step}  {c.domain:28} sent {days} days ago")
+        return 0
+
+    report = followup.run(model=args.model)
+    print(report)
+    for domain in report.written:
+        print(f"  drafted  {domain}")
+    for domain, why in report.failed:
+        print(f"  failed   {domain}: {why}")
+    return 0
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cohandle")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -638,6 +659,12 @@ def main(argv: list[str] | None = None) -> int:
     p_rec = sub.add_parser("reconcile",
                            help="mark drafts that now appear in Sent")
     p_rec.set_defaults(func=cmd_reconcile)
+
+    p_follow = sub.add_parser("followup", help="draft follow-ups that are due")
+    p_follow.add_argument("--dry-run", action="store_true",
+                          help="list what is owed one, write nothing")
+    p_follow.add_argument("--model", default=None)
+    p_follow.set_defaults(func=cmd_followup)
 
     p_sends = sub.add_parser("sends", help="delivery state")
     p_sends.add_argument("--limit", type=int, default=20)

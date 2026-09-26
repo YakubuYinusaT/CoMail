@@ -117,6 +117,7 @@ def queue(request: Request):
                 "send_state": sent.state if sent else None,
                 "send_note": (sent.error or "") if sent else "",
                 "id": str(d.id), "domain": t.domain, "name": t.name or t.domain,
+                "step": d.step,
                 "score": a.score if a else None, "hook_type": d.hook_type,
                 "similarity_max": d.similarity_max, "status": d.status,
                 "email": c.email if c else None,
@@ -163,6 +164,9 @@ def draft_detail(request: Request, draft_id: str):
         sign = signature(campaign)
         ctx = {
             "nav": "queue", "d": d, "t": t, "contact": c,
+            "first": (s.scalar(select(Draft).where(
+                Draft.target_id == t.id, Draft.campaign_id == d.campaign_id,
+                Draft.step == 1)) if d.step > 1 else None),
             "score": a.score if a else None,
             "verdict": a.verdict if a else None,
             "criteria": (a.reasons or {}).get("criteria") if a else None,
@@ -447,11 +451,17 @@ def target_detail(request: Request, domain: str):
 
         assessment = s.scalar(select(Assessment).where(
             Assessment.target_id == t.id).order_by(Assessment.created_at))
-        draft = s.scalar(select(Draft).where(Draft.target_id == t.id)
-                         .order_by(Draft.created_at))
+        drafts = list(s.scalars(select(Draft).where(Draft.target_id == t.id)
+                                .order_by(Draft.step)))
+        draft = drafts[-1] if drafts else None
         reply = s.scalar(select(Reply).where(Reply.target_id == t.id)
                          .order_by(Reply.received_at.desc()))
-        send = s.scalar(select(Send).where(Send.draft_id == draft.id)) if draft else None
+        sends = {}
+        for d in drafts:
+            row = s.scalar(select(Send).where(Send.draft_id == d.id))
+            if row is not None:
+                sends[d.id] = row
+        send = sends.get(draft.id) if draft else None
 
         contacts = list(s.scalars(select(Contact).where(
             Contact.target_id == t.id, Contact.email.is_not(None))
@@ -472,6 +482,7 @@ def target_detail(request: Request, domain: str):
             "rejection": (assessment.reasons or {}).get("rejection_reason") if assessment else None,
             "facts": facts, "pages": pages, "contacts": contacts,
             "draft": draft, "send": send, "reply": reply,
+            "drafts": drafts, "sends": sends,
         })
 
 

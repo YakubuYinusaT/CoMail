@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     # letter itself stays unstyled either way.
     html_email: bool = Field(default=True, alias="HTML_EMAIL")
 
+    # Follow-ups. A second email is drafted when a first one was actually
+    # sent, this many days have passed, and nobody replied. It goes to
+    # the review queue like any other draft and sends nothing by itself.
+    followups_enabled: bool = Field(default=True, alias="FOLLOWUPS_ENABLED")
+    followup_after_days: int = Field(default=7, alias="FOLLOWUP_AFTER_DAYS")
+    # 2 means one follow-up and then stop. Three emails to somebody who
+    # has said nothing is where persistence turns into a nuisance.
+    followup_max_step: int = Field(default=2, alias="FOLLOWUP_MAX_STEP")
+
     # Shared password for the review queue. Empty disables the login
     # entirely: correct locally, and correct in production once Identity
     # Aware Proxy is doing the checking instead. See app/auth.py.

@@ -132,18 +132,24 @@
 
     <div class="card">
       <p class="eyebrow">The email</p>
-      {% if draft %}
-        <p style="margin:0 0 var(--s2);font-size:var(--t-md)">
-          <a href="/draft/{{ draft.id }}">Open the draft</a>
-          <span class="tag plain">{{ draft.status }}</span></p>
-        {% if send %}
-          <p class="mute" style="margin:0;font-size:var(--t-md)">
-            {% if send.state == 'drafted' %}Waiting in your Zoho drafts.
-            {% elif send.state == 'sent' %}Sent{% if send.sent_at %}
-              on {{ send.sent_at.strftime('%d %B, %H:%M') }}{% endif %}.
-            {% else %}{{ send.state }}{% if send.error %}: {{ send.error }}{% endif %}
-            {% endif %}</p>
-        {% endif %}
+      {% if drafts %}
+        {% for d in drafts %}
+        <div style="margin-bottom:var(--s3)">
+          <p style="margin:0 0 4px;font-size:var(--t-md)">
+            <a href="/draft/{{ d.id }}">{{ 'First approach' if d.step == 1
+              else 'Follow-up ' ~ (d.step - 1) }}</a>
+            <span class="tag plain">{{ d.status }}</span></p>
+          {% set row = sends.get(d.id) %}
+          {% if row %}
+            <p class="mute" style="margin:0;font-size:var(--t-sm)">
+              {% if row.state == 'drafted' %}Waiting in your Zoho drafts.
+              {% elif row.state == 'sent' %}Sent{% if row.sent_at %}
+                on {{ row.sent_at.strftime('%d %B, %H:%M') }}{% endif %}.
+              {% else %}{{ row.state }}{% if row.error %}: {{ row.error }}{% endif %}
+              {% endif %}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
       {% elif t.enriched_at and contacts|selectattr('verified')|list %}
         <form method="post" action="/intake/draft" style="margin:0">
           <input type="hidden" name="domain" value="{{ t.domain }}">

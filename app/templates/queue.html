@@ -65,6 +65,7 @@
       {% else %}<span class="tag warn">check first</span>{% endif %}
     </td>
     <td>
+      {% if d.step and d.step > 1 %}<span class="tag warn">follow-up {{ d.step - 1 }}</span>{% endif %}
       {% if d.status == 'approved' %}<span class="tag good">approved</span>
       {% elif d.status == 'rejected' %}<span class="tag bad">rejected</span>
       {% elif d.status == 'edited' %}<span class="tag plain">edited</span>
