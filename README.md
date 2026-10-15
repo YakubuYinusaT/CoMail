@@ -1,4 +1,4 @@
-# Cohandle
+# CoMail
 
 Internal tool for personalised outreach at volume.
 
